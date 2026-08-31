@@ -198,6 +198,7 @@ class PortalTests(unittest.TestCase):
             self.assertIn('id="lang-ru"', html)
             self.assertIn('id="chart-tooltip"', html)
             self.assertIn('id="batch-pagination"', html)
+            self.assertIn('id="proof-stream-track"', html)
             self.assertIn('id="download-proof-btn"', html)
             self.assertIn('rel="icon" href="/favicon.svg"', html)
             self.assertIn('rel="manifest" href="/site.webmanifest"', html)

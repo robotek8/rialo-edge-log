@@ -5,6 +5,10 @@ const translations = {
     heroTitleOne: "ДОКАЗУЕМАЯ",
     heroTitleTwo: "ТЕЛЕМЕТРИЯ",
     heroCopy: "Rialo Edge Log показывает, менялась ли телеметрия после публикации. ESP8266 подписывает каждое измерение, локальный шлюз объединяет показания в батчи, а их SHA-256 digest записывается в Rialo. Выберите устройство и запустите проверку — браузер сам сравнит архив с записью в сети.",
+    proofStreamTitle: "ЖИВАЯ ЛЕНТА RIALO",
+    proofStreamHint: "ПОСЛЕДНИЕ ПОДТВЕРЖДЁННЫЕ ТРАНЗАКЦИИ",
+    proofStreamLoading: "ЗАГРУЖАЮ ТРАНЗАКЦИИ…",
+    proofStreamEmpty: "ПОДТВЕРЖДЁННЫХ ТРАНЗАКЦИЙ ПОКА НЕТ",
     networkEyebrow: "СОСТОЯНИЕ RIALO DEVNET",
     networkTitle: "Запись доказательств",
     networkLoading: "ЗАПРОС RPC…",
@@ -117,6 +121,10 @@ const translations = {
     heroTitleOne: "VERIFIED",
     heroTitleTwo: "TELEMETRY",
     heroCopy: "Rialo Edge Log shows whether telemetry has changed since publication. An ESP8266 signs each measurement, a local gateway groups readings into batches, and each batch's SHA-256 digest is recorded on Rialo. Select a device and run the check — the browser compares the archive with the on-chain record.",
+    proofStreamTitle: "LIVE RIALO STREAM",
+    proofStreamHint: "LATEST CONFIRMED TRANSACTIONS",
+    proofStreamLoading: "LOADING TRANSACTIONS…",
+    proofStreamEmpty: "NO CONFIRMED TRANSACTIONS YET",
     networkEyebrow: "RIALO DEVNET STATUS",
     networkTitle: "Proof anchoring",
     networkLoading: "QUERYING RPC…",
@@ -247,6 +255,7 @@ const savedLanguage = window.localStorage.getItem("rialo-edge-log-language");
 const state = {
   devices: [],
   batches: [],
+  proofStream: [],
   batchPage: 1,
   batchPageSize: 10,
   network: null,
@@ -259,6 +268,7 @@ const state = {
 };
 
 const elements = {
+  proofStreamTrack: document.querySelector("#proof-stream-track"),
   deviceGrid: document.querySelector("#device-grid"),
   deviceEmpty: document.querySelector("#device-empty"),
   history: document.querySelector("#history-section"),
@@ -365,6 +375,77 @@ function formatDate(value) {
 function short(value, size = 8) {
   if (!value) return "—";
   return value.length > size * 2 ? `${value.slice(0, size)}…${value.slice(-size)}` : value;
+}
+
+function groupedSignature(value) {
+  return String(value || "").match(/.{1,4}/g)?.join(" ") || "—";
+}
+
+function proofStreamItem(batch, interactive = true) {
+  const item = document.createElement(interactive ? "a" : "span");
+  item.className = "proof-stream-item";
+  if (interactive) {
+    item.href = explorerUrl("transaction", batch.transaction_signature);
+    item.target = "_blank";
+    item.rel = "noopener";
+    item.setAttribute(
+      "aria-label",
+      `${t("transactionLabel")} ${batch.transaction_signature}, sequence ${batch.first_sequence}–${batch.last_sequence}`,
+    );
+  }
+  const label = document.createElement("b");
+  label.textContent = "TX";
+  const signature = document.createElement("code");
+  signature.textContent = groupedSignature(batch.transaction_signature);
+  const sequence = document.createElement("span");
+  sequence.textContent = `SEQ ${batch.first_sequence}–${batch.last_sequence}`;
+  const recorded = document.createElement("time");
+  recorded.dateTime = batch.created_at_utc || "";
+  recorded.textContent = formatDate(batch.created_at_utc);
+  item.title = batch.transaction_signature;
+  item.append(label, signature, sequence, recorded);
+  return item;
+}
+
+function renderProofStream() {
+  elements.proofStreamTrack.replaceChildren();
+  if (!state.proofStream.length) {
+    const message = document.createElement("span");
+    message.className = "proof-stream-message";
+    message.textContent = t("proofStreamEmpty");
+    elements.proofStreamTrack.append(message);
+    return;
+  }
+
+  const entries = [...state.proofStream];
+  while (entries.length < 4) entries.push(...state.proofStream);
+  const visibleEntries = entries.slice(0, Math.max(4, state.proofStream.length));
+  const primary = document.createElement("div");
+  primary.className = "proof-stream-group";
+  const duplicate = document.createElement("div");
+  duplicate.className = "proof-stream-group";
+  duplicate.setAttribute("aria-hidden", "true");
+  for (const batch of visibleEntries) {
+    primary.append(proofStreamItem(batch));
+    duplicate.append(proofStreamItem(batch, false));
+  }
+  elements.proofStreamTrack.style.setProperty(
+    "--proof-stream-duration",
+    `${Math.max(58, visibleEntries.length * 15)}s`,
+  );
+  elements.proofStreamTrack.append(primary, duplicate);
+}
+
+async function loadProofStream() {
+  try {
+    const payload = await requestJson("/api/batches");
+    state.proofStream = (Array.isArray(payload.batches) ? payload.batches : [])
+      .filter((batch) => batch.transaction_signature)
+      .slice(0, 8);
+  } catch (_error) {
+    state.proofStream = [];
+  }
+  renderProofStream();
 }
 
 function statusNode(label = t("verified")) {
@@ -901,6 +982,7 @@ async function applyLanguage(language, remember = true, updateAddress = true) {
   if (remember) window.localStorage.setItem("rialo-edge-log-language", language);
   renderDevices();
   renderBatches();
+  renderProofStream();
   renderNetworkStatus();
   if (state.selectedDeviceId) {
     const device = state.devices.find((item) => item.device_id === state.selectedDeviceId);
@@ -918,6 +1000,7 @@ document.querySelector("#lang-ru").addEventListener("click", () => applyLanguage
 document.querySelector("#refresh-btn").addEventListener("click", () => {
   loadDevices();
   loadNetworkStatus();
+  loadProofStream();
 });
 elements.previousPage.addEventListener("click", () => {
   state.batchPage -= 1;
@@ -981,3 +1064,4 @@ document.querySelector("#copy-link-btn").addEventListener("click", async (event)
 applyLanguage(state.language, false, false);
 loadDevices();
 loadNetworkStatus();
+loadProofStream();
