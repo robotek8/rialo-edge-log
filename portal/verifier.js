@@ -36,14 +36,29 @@
     }
   }
 
-  function canonicalize(value) {
-    if (Array.isArray(value)) return value.map(canonicalize);
-    if (value && typeof value === "object") {
-      return Object.fromEntries(
-        Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]),
-      );
+  function canonicalJson(value, propertyName = "") {
+    if (value === null) return "null";
+    if (Array.isArray(value)) {
+      return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
     }
-    return value;
+    if (typeof value === "object") {
+      const fields = Object.keys(value).sort().map((key) => (
+        `${JSON.stringify(key)}:${canonicalJson(value[key], key)}`
+      ));
+      return `{${fields.join(",")}}`;
+    }
+    if (typeof value === "number") {
+      assert(Number.isFinite(value), "Proof contains a non-finite number");
+      // The gateway normalizes temperature_c to a Python float. Python's
+      // json.dumps keeps the decimal point for whole-valued floats (5.0),
+      // while JSON.stringify shortens the same value to 5. Preserve the
+      // gateway representation so both sides hash identical bytes.
+      if (propertyName === "temperature_c" && Number.isInteger(value)) {
+        return Object.is(value, -0) ? "-0.0" : `${value}.0`;
+      }
+      return JSON.stringify(value);
+    }
+    return JSON.stringify(value);
   }
 
   function proofPayload(batch) {
@@ -68,7 +83,7 @@
   }
 
   async function calculateBatchDigest(batch) {
-    const canonical = JSON.stringify(canonicalize(proofPayload(batch)));
+    const canonical = canonicalJson(proofPayload(batch));
     return sha256Hex(TEXT_ENCODER.encode(canonical));
   }
 

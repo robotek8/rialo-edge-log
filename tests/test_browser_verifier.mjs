@@ -128,6 +128,35 @@ test("browser independently verifies signatures, digest, transaction and workflo
   assert.equal(result.feeKelvin, 5000);
 });
 
+test("browser digest matches Python for a whole-degree temperature", async () => {
+  const batch = {
+    schema_version: 2,
+    batch_id: "edge-0E0473-1-1-regression",
+    device_id: "edge-0E0473",
+    first_sequence: 1,
+    last_sequence: 1,
+    reading_count: 1,
+    readings: [{
+      message_type: "telemetry",
+      schema_version: 2,
+      device_id: "edge-0E0473",
+      sequence: 1,
+      uptime_ms: 5000,
+      temperature_milli_c: 5000,
+      temperature_c: 5.0,
+      simulated: true,
+      signature_algorithm: "ecdsa-p256-sha256-raw",
+      signature: "00".repeat(64),
+    }],
+    device_public_key_fingerprint: "11".repeat(32),
+  };
+
+  assert.equal(
+    await verifier.calculateBatchDigest(batch),
+    "13b28d0a556164ccde817d8216f39d31666d74c70f488d0359393c9ec9747e63",
+  );
+});
+
 test("browser rejects changed telemetry", async () => {
   const { bundle, rpcCall } = await fixture();
   bundle.batch.readings[0].temperature_milli_c = 9999;
