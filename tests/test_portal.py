@@ -206,7 +206,7 @@ class PortalTests(unittest.TestCase):
             self.assertIn('href="https://github.com/robotek8/rialo-edge-log"', html)
             self.assertIn('href="https://x.com/ra5alghul"', html)
             self.assertIn('href="https://t.me/Ras_a1_Ghu1"', html)
-            self.assertIn('property="og:image" content="https://rialo-edge-log.xyz/og-image.png"', html)
+            self.assertIn('property="og:image" content="https://rialo-edge-log.xyz/og-image.png?v=2"', html)
             self.assertIn('name="twitter:card" content="summary_large_image"', html)
             self.assertIn('id="limits-title"', html)
 
