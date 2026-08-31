@@ -29,6 +29,10 @@ const translations = {
     refresh: "Обновить архив",
     emptyTitle: "В архиве пока нет устройств",
     emptyCopy: "Первое устройство появится после автоматической публикации батча.",
+    deviceOnline: "ONLINE",
+    deviceStale: "STALE",
+    deviceOffline: "OFFLINE",
+    justNow: "только что",
     back: "← Все устройства",
     historyEyebrow: "ИСТОРИЯ УСТРОЙСТВА",
     historyTitle: "История устройства",
@@ -83,6 +87,16 @@ const translations = {
     stepTwoCopy: "В сети хранится digest батча. Если архив изменить, значения перестанут совпадать.",
     stepThreeTitle: "Портал сравнивает",
     stepThreeCopy: "Если хотя бы одно значение изменится, проверка покажет красное предупреждение.",
+    limitsEyebrow: "ГРАНИЦЫ ДОКАЗАТЕЛЬСТВА",
+    limitsTitle: "Что доказано — и что нет",
+    limitsProves: "ДОКАЗЫВАЕТ",
+    provesSignatures: "Показания подписаны ключом зарегистрированного устройства.",
+    provesIntegrity: "Опубликованный батч не менялся после записи.",
+    provesChain: "Digest совпадает с исторической записью в Rialo.",
+    limitsDoesNotProve: "НЕ ДОКАЗЫВАЕТ",
+    doesNotProveCalibration: "Датчик был правильно откалиброван и установлен.",
+    doesNotProveReality: "Измеренное физическое значение само по себе истинно.",
+    doesNotProveCompromise: "Устройство не было скомпрометировано до подписания.",
     footerNote: "Проект проверяет неизменность записей, но не точность самого датчика. Это независимый open-source эксперимент для Rialo Devnet, не связанный с Rialo Labs или Subzero Labs.",
     badResponse: "Некорректный ответ архива",
     archiveUnavailable: "Архив недоступен",
@@ -145,6 +159,10 @@ const translations = {
     refresh: "Refresh archive",
     emptyTitle: "No devices have been published yet",
     emptyCopy: "The first device will appear after a verified batch is published automatically.",
+    deviceOnline: "ONLINE",
+    deviceStale: "STALE",
+    deviceOffline: "OFFLINE",
+    justNow: "just now",
     back: "← All devices",
     historyEyebrow: "DEVICE HISTORY",
     historyTitle: "Device history",
@@ -199,6 +217,16 @@ const translations = {
     stepTwoCopy: "Rialo stores the batch digest. If the archive changes, the two values no longer match.",
     stepThreeTitle: "The portal compares both records",
     stepThreeCopy: "If any value differs, verification returns a clear integrity warning.",
+    limitsEyebrow: "PROOF BOUNDARIES",
+    limitsTitle: "What this proves — and what it does not",
+    limitsProves: "PROVES",
+    provesSignatures: "Readings were signed by the registered device key.",
+    provesIntegrity: "The published batch has not changed since anchoring.",
+    provesChain: "The digest matches the historical record on Rialo.",
+    limitsDoesNotProve: "DOES NOT PROVE",
+    doesNotProveCalibration: "The sensor was calibrated and installed correctly.",
+    doesNotProveReality: "The measured physical value itself was true.",
+    doesNotProveCompromise: "The device was not compromised before signing.",
     footerNote: "The project verifies record integrity, not sensor accuracy. It is an independent open-source Rialo Devnet experiment and is not affiliated with Rialo Labs or Subzero Labs.",
     badResponse: "The archive returned an invalid response",
     archiveUnavailable: "Archive unavailable",
@@ -328,6 +356,28 @@ function formatRlo(value, maximumFractionDigits = 6) {
     minimumFractionDigits: 0,
     maximumFractionDigits,
   })} RLO`;
+}
+
+function formatRelativeTime(value) {
+  const timestamp = Date.parse(value || "");
+  if (!Number.isFinite(timestamp)) return "—";
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (elapsedSeconds < 60) return t("justNow");
+  const formatter = new Intl.RelativeTimeFormat(
+    state.language === "en" ? "en-US" : "ru-RU",
+    { numeric: "always", style: "short" },
+  );
+  if (elapsedSeconds < 3600) return formatter.format(-Math.floor(elapsedSeconds / 60), "minute");
+  if (elapsedSeconds < 86400) return formatter.format(-Math.floor(elapsedSeconds / 3600), "hour");
+  return formatter.format(-Math.floor(elapsedSeconds / 86400), "day");
+}
+
+function devicePresence(value) {
+  const timestamp = Date.parse(value || "");
+  const elapsedMs = Number.isFinite(timestamp) ? Math.max(0, Date.now() - timestamp) : Infinity;
+  if (elapsedMs <= 10 * 60 * 1000) return { className: "online", label: t("deviceOnline") };
+  if (elapsedMs <= 30 * 60 * 1000) return { className: "stale", label: t("deviceStale") };
+  return { className: "offline", label: t("deviceOffline") };
 }
 
 function renderNetworkStatus() {
@@ -568,7 +618,11 @@ function deviceCard(device) {
   button.type = "button";
   const header = document.createElement("span");
   header.className = "device-card-head";
-  header.append(statusNode(t("archiveOnline")));
+  const presence = devicePresence(device.latest_batch_utc);
+  const presenceLabel = document.createElement("span");
+  presenceLabel.className = `status device-presence ${presence.className}`;
+  presenceLabel.textContent = `${presence.label} · ${formatRelativeTime(device.latest_batch_utc)}`;
+  header.append(presenceLabel);
   const id = document.createElement("strong");
   id.textContent = device.device_id;
   const temperature = document.createElement("b");
@@ -1065,3 +1119,4 @@ applyLanguage(state.language, false, false);
 loadDevices();
 loadNetworkStatus();
 loadProofStream();
+window.setInterval(renderDevices, 60_000);

@@ -8,6 +8,24 @@
       content="Подписанная IoT-телеметрия с проверкой истории через Rialo Devnet."
     >
     <title>Rialo Edge Log — Verified Telemetry</title>
+    <link rel="canonical" href="https://rialo-edge-log.xyz/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Rialo Edge Log">
+    <meta property="og:title" content="Rialo Edge Log — Verifiable Telemetry">
+    <meta property="og:description" content="Signed IoT telemetry anchored on Rialo Devnet and independently verified in the browser.">
+    <meta property="og:url" content="https://rialo-edge-log.xyz/">
+    <meta property="og:image" content="https://rialo-edge-log.xyz/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Rialo Edge Log — signed at the edge, anchored on Rialo Devnet, verified in the browser">
+    <meta property="og:locale" content="ru_RU">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:creator" content="@ra5alghul">
+    <meta name="twitter:title" content="Rialo Edge Log — Verifiable Telemetry">
+    <meta name="twitter:description" content="Signed IoT telemetry anchored on Rialo Devnet and independently verified in the browser.">
+    <meta name="twitter:image" content="https://rialo-edge-log.xyz/og-image.png">
+    <meta name="twitter:image:alt" content="Rialo Edge Log — signed at the edge, anchored on Rialo Devnet, verified in the browser">
     <meta name="theme-color" content="#11171c">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32">
@@ -235,6 +253,33 @@
           <article><b>01</b><h3 data-i18n="stepOneTitle">Архив показывает данные</h3><p data-i18n="stepOneCopy">Сервер хранит показания и время, чтобы историю можно было открыть в браузере.</p></article>
           <article><b>02</b><h3 data-i18n="stepTwoTitle">Rialo хранит отпечаток</h3><p data-i18n="stepTwoCopy">В сети хранится digest батча. Если архив изменить, значения перестанут совпадать.</p></article>
           <article><b>03</b><h3 data-i18n="stepThreeTitle">Портал сравнивает</h3><p data-i18n="stepThreeCopy">Если хотя бы одно значение изменится, проверка покажет красное предупреждение.</p></article>
+        </div>
+      </section>
+
+      <section class="proof-limits" aria-labelledby="limits-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow" data-i18n="limitsEyebrow">ГРАНИЦЫ ДОКАЗАТЕЛЬСТВА</p>
+            <h2 id="limits-title" data-i18n="limitsTitle">Что доказано — и что нет</h2>
+          </div>
+        </div>
+        <div class="limits-grid">
+          <article class="limits-card proves">
+            <strong data-i18n="limitsProves">ДОКАЗЫВАЕТ</strong>
+            <ul>
+              <li data-i18n="provesSignatures">Показания подписаны ключом зарегистрированного устройства.</li>
+              <li data-i18n="provesIntegrity">Опубликованный батч не менялся после записи.</li>
+              <li data-i18n="provesChain">Digest совпадает с исторической записью в Rialo.</li>
+            </ul>
+          </article>
+          <article class="limits-card does-not-prove">
+            <strong data-i18n="limitsDoesNotProve">НЕ ДОКАЗЫВАЕТ</strong>
+            <ul>
+              <li data-i18n="doesNotProveCalibration">Датчик был правильно откалиброван и установлен.</li>
+              <li data-i18n="doesNotProveReality">Измеренное физическое значение само по себе истинно.</li>
+              <li data-i18n="doesNotProveCompromise">Устройство не было скомпрометировано до подписания.</li>
+            </ul>
+          </article>
         </div>
       </section>
     </main>

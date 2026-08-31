@@ -249,7 +249,7 @@ a.proof-stream-item:focus-visible { outline: none; color: var(--paper); }
 .drop-icon { color: var(--signal); font: 400 42px/1 var(--mono); }
 .privacy-note { margin: 14px 0 0; color: var(--muted); font-size: 12px; }
 
-.devices-section, .batches-section, .proof-file-section, .how-it-works { padding: 90px 0 0; }
+.devices-section, .batches-section, .proof-file-section, .how-it-works, .proof-limits { padding: 90px 0 0; }
 .devices-section { padding-top: 0; }
 .text-button, .icon-button {
   border: 0;
@@ -284,6 +284,12 @@ td.mono { font-family: var(--mono); }
 .status.local-only::before, .status.local-verified::before { background: var(--warning); }
 .status.tampered, .status.invalid-receipt { color: var(--danger); }
 .status.tampered::before, .status.invalid-receipt::before { background: var(--danger); }
+.device-presence.online { color: var(--verified); }
+.device-presence.online::before { background: var(--verified); box-shadow: 0 0 10px rgba(112,230,196,.55); }
+.device-presence.stale { color: var(--warning); }
+.device-presence.stale::before { background: var(--warning); }
+.device-presence.offline { color: var(--danger); }
+.device-presence.offline::before { background: var(--danger); }
 .row-button { border: 0; background: none; color: var(--signal); cursor: pointer; font: 600 12px var(--mono); }
 .row-button:hover { text-decoration: underline; }
 .empty-state { display: grid; place-items: center; min-height: 210px; color: var(--muted); text-align: center; }
@@ -417,6 +423,15 @@ td.mono { font-family: var(--mono); }
 .steps b { color: var(--signal); font: 600 12px var(--mono); }
 .steps h3 { margin: 16px 0 9px; font-size: 18px; }
 .steps p { margin-bottom: 0; color: var(--muted); font-size: 14px; }
+.limits-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: var(--line); }
+.limits-card { padding: 28px; background: var(--panel); }
+.limits-card > strong { font: 700 11px var(--mono); letter-spacing: .12em; }
+.limits-card.proves > strong { color: var(--verified); }
+.limits-card.does-not-prove > strong { color: var(--warning); }
+.limits-card ul { display: grid; gap: 13px; margin: 20px 0 0; padding: 0; list-style: none; }
+.limits-card li { position: relative; padding-left: 22px; color: var(--muted); font-size: 14px; }
+.limits-card li::before { position: absolute; left: 0; color: var(--verified); content: "✓"; font: 700 12px var(--mono); }
+.limits-card.does-not-prove li::before { color: var(--warning); content: "—"; }
 .footer { display: flex; align-items: start; justify-content: space-between; gap: 28px; margin-top: 90px; padding: 32px 0 44px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 12px; }
 .footer > span { max-width: 880px; }
 .social-row { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
@@ -459,6 +474,7 @@ td.mono { font-family: var(--mono); }
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .detail-grid { grid-template-columns: 1fr; }
   .steps { grid-template-columns: 1fr; }
+  .limits-grid { grid-template-columns: 1fr; }
   .chain-records { grid-template-columns: 1fr; }
   .network-metrics { grid-template-columns: repeat(2, 1fr); }
   .network-foot { display: grid; }

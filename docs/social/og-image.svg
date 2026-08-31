@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#ffffff" stroke-opacity=".035"/>
+    </pattern>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(940 110) rotate(135) scale(520 360)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#70e6c4" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#70e6c4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#10161a"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="68" y="56" width="1064" height="518" rx="10" fill="none" stroke="#33414a"/>
+  <circle cx="104" cy="96" r="6" fill="#70e6c4"/>
+  <text x="124" y="102" fill="#eeeae1" font-family="DejaVu Sans Mono, monospace" font-size="16" font-weight="700" letter-spacing="2.2">RIALO EDGE LOG</text>
+  <text x="1038" y="102" fill="#70e6c4" font-family="DejaVu Sans Mono, monospace" font-size="13" font-weight="700" text-anchor="end" letter-spacing="1.7">LIVE ON DEVNET</text>
+  <text x="104" y="190" fill="#ff7919" font-family="DejaVu Sans Mono, monospace" font-size="14" font-weight="700" letter-spacing="2.1">VERIFIABLE IOT TELEMETRY</text>
+  <text x="98" y="300" fill="#eeeae1" font-family="DejaVu Sans, sans-serif" font-size="92" font-weight="900" letter-spacing="-4">VERIFIED</text>
+  <text x="98" y="392" fill="#ff7919" font-family="DejaVu Sans, sans-serif" font-size="92" font-weight="900" letter-spacing="-4">TELEMETRY</text>
+  <text x="104" y="448" fill="#9ba5aa" font-family="DejaVu Sans, sans-serif" font-size="22">Signed at the edge. Anchored on Rialo Devnet.</text>
+  <text x="104" y="481" fill="#9ba5aa" font-family="DejaVu Sans, sans-serif" font-size="22">Independently verified in the browser.</text>
+  <line x1="104" y1="526" x2="1096" y2="526" stroke="#28343b"/>
+  <text x="104" y="553" fill="#70e6c4" font-family="DejaVu Sans Mono, monospace" font-size="14" font-weight="700">ESP8266</text>
+  <text x="217" y="553" fill="#56636a" font-family="DejaVu Sans Mono, monospace" font-size="14">→</text>
+  <text x="257" y="553" fill="#eeeae1" font-family="DejaVu Sans Mono, monospace" font-size="14" font-weight="700">SIGNED BATCH</text>
+  <text x="390" y="553" fill="#56636a" font-family="DejaVu Sans Mono, monospace" font-size="14">→</text>
+  <text x="430" y="553" fill="#eeeae1" font-family="DejaVu Sans Mono, monospace" font-size="14" font-weight="700">SHA-256</text>
+  <text x="511" y="553" fill="#56636a" font-family="DejaVu Sans Mono, monospace" font-size="14">→</text>
+  <text x="551" y="553" fill="#ff7919" font-family="DejaVu Sans Mono, monospace" font-size="14" font-weight="700">RIALO</text>
+  <text x="1096" y="553" fill="#9ba5aa" font-family="DejaVu Sans Mono, monospace" font-size="14" text-anchor="end">rialo-edge-log.xyz</text>
+</svg>
