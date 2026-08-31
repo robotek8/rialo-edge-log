@@ -203,12 +203,25 @@ class PortalTests(unittest.TestCase):
             self.assertIn('rel="icon" href="/favicon.svg"', html)
             self.assertIn('rel="manifest" href="/site.webmanifest"', html)
             self.assertIn('/verifier.js', html)
+            self.assertIn('href="https://github.com/robotek8/rialo-edge-log"', html)
+            self.assertIn('href="https://x.com/ra5alghul"', html)
+            self.assertIn('href="https://t.me/Ras_a1_Ghu1"', html)
 
             connection.request("GET", "/favicon.svg")
             response = connection.getresponse()
             self.assertEqual(response.status, 200)
             self.assertEqual(response.getheader("Content-Type"), "image/svg+xml; charset=utf-8")
             self.assertIn(b"#FF7A1A", response.read())
+
+            for icon_path in ("/github.svg", "/x.svg", "/telegram.svg"):
+                connection.request("GET", icon_path)
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(
+                    response.getheader("Content-Type"),
+                    "image/svg+xml; charset=utf-8",
+                )
+                self.assertIn(b'viewBox="0 0 24 24"', response.read())
             connection.close()
         finally:
             server.shutdown()
