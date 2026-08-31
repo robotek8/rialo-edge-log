@@ -16,7 +16,7 @@
   <text x="124" y="102" fill="#eeeae1" font-family="DejaVu Sans Mono, monospace" font-size="16" font-weight="700" letter-spacing="2.2">RIALO EDGE LOG</text>
   <text x="1038" y="102" fill="#70e6c4" font-family="DejaVu Sans Mono, monospace" font-size="13" font-weight="700" text-anchor="end" letter-spacing="1.7">LIVE ON DEVNET</text>
   <text x="104" y="190" fill="#ff7919" font-family="DejaVu Sans Mono, monospace" font-size="14" font-weight="700" letter-spacing="2.1">VERIFIABLE IOT TELEMETRY</text>
-  <text x="98" y="300" fill="#eeeae1" font-family="Oswald, Arial Narrow, sans-serif" font-size="108" font-weight="700" letter-spacing="-2">VERIFIED</text>
+  <text x="98" y="300" fill="#eeeae1" font-family="Oswald, Arial Narrow, sans-serif" font-size="108" font-weight="700" letter-spacing="-2">VERIFIABLE</text>
   <text x="98" y="392" fill="#ff7919" font-family="Oswald, Arial Narrow, sans-serif" font-size="108" font-weight="700" letter-spacing="-2">TELEMETRY</text>
   <text x="104" y="448" fill="#9ba5aa" font-family="DejaVu Sans, sans-serif" font-size="22">Signed at the edge. Anchored on Rialo Devnet.</text>
   <text x="104" y="481" fill="#9ba5aa" font-family="DejaVu Sans, sans-serif" font-size="22">Independently verified in the browser.</text>
