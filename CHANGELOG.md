@@ -13,4 +13,5 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 
 ### Fixed
 
+- Unified public-facing terminology around “Verifiable Telemetry”; “Verified” now remains only for completed proof results.
 - Fixed browser verification for readings whose Celsius value is a whole degree, such as `5.0 °C`.

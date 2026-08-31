@@ -489,7 +489,7 @@ td.mono { font-family: var(--mono); }
 @media (max-width: 560px) {
   .shell { width: min(100% - 24px, 1100px); }
   .hero { padding-top: 54px; }
-  h1 { font-size: 57px; }
+  h1 { font-size: clamp(48px, 16vw, 57px); }
   .hero-copy { font-size: 16px; }
   .proof-stream { margin-top: 32px; }
   .proof-stream-head { align-items: start; padding-block: 10px; }

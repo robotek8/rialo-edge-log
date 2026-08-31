@@ -2,7 +2,7 @@ const translations = {
   ru: {
     pageTitle: "Rialo Edge Log — проверяемая телеметрия",
     heroEyebrow: "ПРОВЕРЯЕМАЯ IOT-ТЕЛЕМЕТРИЯ",
-    heroTitleOne: "ДОКАЗУЕМАЯ",
+    heroTitleOne: "ПРОВЕРЯЕМАЯ",
     heroTitleTwo: "ТЕЛЕМЕТРИЯ",
     heroCopy: "Rialo Edge Log показывает, менялась ли телеметрия после публикации. ESP8266 подписывает каждое измерение, локальный шлюз объединяет показания в батчи, а их SHA-256 digest записывается в Rialo. Выберите устройство и запустите проверку — браузер сам сравнит архив с записью в сети.",
     proofStreamTitle: "ЖИВАЯ ЛЕНТА RIALO",
@@ -132,7 +132,7 @@ const translations = {
   en: {
     pageTitle: "Rialo Edge Log — Verifiable Telemetry",
     heroEyebrow: "VERIFIABLE IOT TELEMETRY",
-    heroTitleOne: "VERIFIED",
+    heroTitleOne: "VERIFIABLE",
     heroTitleTwo: "TELEMETRY",
     heroCopy: "Rialo Edge Log shows whether telemetry has changed since publication. An ESP8266 signs each measurement, a local gateway groups readings into batches, and each batch's SHA-256 digest is recorded on Rialo. Select a device and run the check — the browser compares the archive with the on-chain record.",
     proofStreamTitle: "LIVE RIALO STREAM",
