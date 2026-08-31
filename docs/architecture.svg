@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="690" viewBox="0 0 1200 690" role="img" aria-labelledby="title desc">
+  <title id="title">Rialo Edge Log architecture</title>
+  <desc id="desc">Signed telemetry travels from a NodeMCU through a Windows gateway to Rialo Devnet and a public VPS. A visitor verifies the archive directly against Rialo.</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#263138" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <filter id="shadow" x="-15%" y="-20%" width="130%" height="150%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L10 5L0 10Z" fill="#ff7919"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L10 5L0 10Z" fill="#70e6c4"/>
+    </marker>
+    <style>
+      .sans{font-family:Inter,"Segoe UI",Arial,sans-serif}.mono{font-family:"Cascadia Mono",Consolas,monospace}
+      .box{fill:#182127;stroke:#3a4851;stroke-width:1.5}.edge{stroke:#ff7919}.chain{stroke:#70e6c4}.public{stroke:#7693a3}
+      .tag{font:700 11px "Cascadia Mono",Consolas,monospace;letter-spacing:1.4px}.name{font:700 21px Inter,"Segoe UI",Arial,sans-serif;fill:#eeeae1}.copy{font:13px Inter,"Segoe UI",Arial,sans-serif;fill:#9ba5aa}.small{font:11px "Cascadia Mono",Consolas,monospace;fill:#9ba5aa}.label{font:600 11px "Cascadia Mono",Consolas,monospace;fill:#c7c7c2}
+    </style>
+  </defs>
+
+  <rect width="1200" height="690" rx="18" fill="#10161a"/>
+  <rect width="1200" height="690" rx="18" fill="url(#grid)"/>
+  <text x="60" y="62" class="tag" fill="#ff7919">RIALO EDGE LOG</text>
+  <text x="60" y="104" class="sans" font-size="31" font-weight="800" fill="#eeeae1">System architecture</text>
+  <text x="60" y="132" class="copy">Signed telemetry stays off-chain; its digest is anchored on Rialo Devnet.</text>
+
+  <!-- main data path -->
+  <g filter="url(#shadow)">
+    <rect class="box edge" x="60" y="205" width="235" height="165" rx="10"/>
+    <text x="82" y="235" class="tag" fill="#ff7919">01 · DEVICE</text>
+    <text x="82" y="276" class="name">NodeMCU V3</text>
+    <text x="82" y="306" class="copy">ESP8266 signs every reading</text>
+    <text x="82" y="334" class="small">ECDSA P-256 · 5 s interval</text>
+    <circle cx="263" cy="237" r="7" fill="#70e6c4"/>
+
+    <rect class="box edge" x="355" y="205" width="260" height="165" rx="10"/>
+    <text x="377" y="235" class="tag" fill="#ff7919">02 · EDGE COMPUTER</text>
+    <text x="377" y="276" class="name">Windows + WSL</text>
+    <text x="377" y="306" class="copy">Verify · batch · anchor · publish</text>
+    <text x="377" y="334" class="small">private keys and wallet stay here</text>
+
+    <rect class="box chain" x="675" y="205" width="210" height="165" rx="10"/>
+    <text x="697" y="235" class="tag" fill="#70e6c4">03 · BLOCKCHAIN</text>
+    <text x="697" y="276" class="name">Rialo Devnet</text>
+    <text x="697" y="306" class="copy">Venus workflow state</text>
+    <text x="697" y="334" class="small">digest · range · device ID</text>
+
+    <rect class="box public" x="945" y="205" width="195" height="165" rx="10"/>
+    <text x="967" y="235" class="tag" fill="#8aa6b5">04 · PUBLIC VPS</text>
+    <text x="967" y="276" class="name">Archive</text>
+    <text x="967" y="306" class="copy">API · SQLite · web portal</text>
+    <text x="967" y="334" class="small">HTTPS · public read access</text>
+  </g>
+
+  <path d="M295 287H343" fill="none" stroke="#ff7919" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
+  <text x="319" y="268" text-anchor="middle" class="label">USB serial</text>
+  <path d="M615 267H663" fill="none" stroke="#70e6c4" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <text x="639" y="246" text-anchor="middle" class="label">digest</text>
+  <path d="M615 326C735 415 820 415 945 326" fill="none" stroke="#ff7919" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
+  <text x="780" y="409" text-anchor="middle" class="label">confirmed proof · HTTPS</text>
+
+  <!-- browser verification -->
+  <g filter="url(#shadow)">
+    <rect class="box public" x="355" y="475" width="530" height="140" rx="10"/>
+    <text x="380" y="507" class="tag" fill="#8aa6b5">05 · VISITOR'S BROWSER</text>
+    <text x="380" y="548" class="name">Independent verification</text>
+    <text x="380" y="578" class="copy">Checks device signatures and SHA-256, then reads the workflow via public RPC.</text>
+  </g>
+  <path d="M1042 370C1042 453 923 512 897 523" fill="none" stroke="#7693a3" stroke-width="2.2" marker-end="url(#arrow-green)"/>
+  <text x="1006" y="447" text-anchor="middle" class="label">telemetry + proof</text>
+  <path d="M675 545C610 490 654 419 735 380" fill="none" stroke="#70e6c4" stroke-width="2.2" stroke-dasharray="7 7" marker-end="url(#arrow-green)"/>
+  <text x="610" y="438" text-anchor="middle" class="label">public RPC</text>
+
+  <line x1="60" y1="650" x2="1140" y2="650" stroke="#33414a"/>
+  <circle cx="72" cy="670" r="5" fill="#ff7919"/><text x="86" y="674" class="small">private edge path</text>
+  <circle cx="252" cy="670" r="5" fill="#70e6c4"/><text x="266" y="674" class="small">on-chain verification</text>
+  <circle cx="465" cy="670" r="5" fill="#8aa6b5"/><text x="479" y="674" class="small">public read path</text>
+</svg>

@@ -1,0 +1,23 @@
+# Arduino build output
+build/
+*.bin
+*.elf
+*.map
+
+# Local configuration and secrets
+secrets.h
+device_secrets.h
+config.local.h
+.env
+.env.*
+!.env.example
+
+# Generated telemetry and reports
+data/
+reports/*.json
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

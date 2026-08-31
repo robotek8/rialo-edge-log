@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Подписанная IoT-телеметрия с проверкой истории через Rialo Devnet."
+    >
+    <title>Rialo Edge Log — Verified Telemetry</title>
+    <meta name="theme-color" content="#11171c">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/verifier.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="blueprint" aria-hidden="true"></div>
+    <header class="topbar shell">
+      <a class="brand" href="#top" aria-label="Rialo Edge Log">
+        <span class="live-dot"></span>
+        <strong>RIALO EDGE LOG</strong>
+      </a>
+      <div class="language-switch" role="group" aria-label="Language">
+        <button id="lang-en" type="button">EN</button>
+        <span aria-hidden="true">|</span>
+        <button id="lang-ru" type="button">RU</button>
+      </div>
+    </header>
+
+    <main id="top" class="shell">
+      <section class="hero public-hero">
+        <p class="eyebrow" data-i18n="heroEyebrow">ПРОВЕРЯЕМАЯ IOT-ТЕЛЕМЕТРИЯ</p>
+        <h1><span data-i18n="heroTitleOne">ДОКАЗУЕМАЯ</span><br><span class="accent" data-i18n="heroTitleTwo">ТЕЛЕМЕТРИЯ</span></h1>
+        <p class="hero-copy" data-i18n="heroCopy">
+          Rialo Edge Log показывает, менялась ли телеметрия после публикации. ESP8266
+          подписывает каждое измерение, локальный шлюз объединяет показания в батчи, а их
+          SHA-256 digest записывается в Rialo. Выберите устройство и запустите проверку —
+          браузер сам сравнит архив с записью в сети.
+        </p>
+      </section>
+
+      <section class="network-section" aria-labelledby="network-title">
+        <div class="section-heading network-heading">
+          <div>
+            <p class="eyebrow" data-i18n="networkEyebrow">СОСТОЯНИЕ RIALO DEVNET</p>
+            <h2 id="network-title" data-i18n="networkTitle">Запись доказательств</h2>
+          </div>
+          <span id="network-status" class="network-badge"><i></i><span data-i18n="networkLoading">ЗАПРОС RPC…</span></span>
+        </div>
+        <p class="network-copy" data-i18n="networkCopy">Просмотр и проверка бесплатны. RLO списываются с кошелька проекта только при записи digest нового батча.</p>
+        <div class="network-metrics">
+          <article><span data-i18n="networkBalance">Баланс отправителя</span><strong id="network-balance">—</strong></article>
+          <article><span data-i18n="networkAnchors">Записей за 24 часа</span><strong id="network-anchors">—</strong></article>
+          <article><span data-i18n="networkSpend">Расчётный расход за сутки</span><strong id="network-spend">—</strong></article>
+          <article><span data-i18n="networkReserve">Расчётный запас</span><strong id="network-reserve">—</strong></article>
+        </div>
+        <div class="network-foot">
+          <span><span data-i18n="networkPayer">Публичный fee payer</span>: <code id="network-payer">—</code></span>
+          <span id="network-note" data-i18n="networkEstimate">Прогноз основан на интервале последних батчей и комиссии последней транзакции.</span>
+        </div>
+      </section>
+
+      <section class="devices-section" aria-labelledby="devices-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow" data-i18n="devicesEyebrow">ЗАРЕГИСТРИРОВАННЫЕ УСТРОЙСТВА</p>
+            <h2 id="devices-title" data-i18n="devicesTitle">Устройства</h2>
+          </div>
+          <button id="refresh-btn" class="text-button" type="button" data-i18n="refresh">Обновить архив</button>
+        </div>
+        <div id="device-grid" class="device-grid"></div>
+        <div id="device-empty" class="empty-state standalone" hidden>
+          <strong data-i18n="emptyTitle">В архиве пока нет устройств</strong>
+          <span data-i18n="emptyCopy">Первое устройство появится после автоматической публикации батча.</span>
+        </div>
+      </section>
+
+      <section id="history-section" class="batches-section" hidden aria-labelledby="history-title">
+        <div class="section-heading history-heading">
+          <div>
+            <button id="back-devices" class="breadcrumb" type="button" data-i18n="back">← Все устройства</button>
+            <p class="eyebrow" data-i18n="historyEyebrow">ИСТОРИЯ УСТРОЙСТВА</p>
+            <h2 id="history-title" data-i18n="historyTitle">История устройства</h2>
+            <p id="device-fingerprint" class="fingerprint"></p>
+          </div>
+          <button id="copy-link-btn" class="secondary-button" type="button" data-i18n="copyLink">Скопировать ссылку</button>
+        </div>
+
+        <div class="metrics" aria-label="Сводка устройства">
+          <article><span data-i18n="metricBatches">Подтверждённых батчей</span><strong id="metric-batches">—</strong></article>
+          <article><span data-i18n="metricReadings">Показаний</span><strong id="metric-readings">—</strong></article>
+          <article><span data-i18n="metricFirst">Первый sequence</span><strong id="metric-first">—</strong></article>
+          <article><span data-i18n="metricLast">Последний sequence</span><strong id="metric-last">—</strong></article>
+        </div>
+
+        <div class="table-frame">
+          <table>
+            <thead>
+              <tr>
+                <th data-i18n="tableStatus">Подтверждение</th>
+                <th data-i18n="tableTime">Время</th>
+                <th data-i18n="tableRange">Диапазон</th>
+                <th data-i18n="tableReadings">Показаний</th>
+                <th data-i18n="tableAverage">Средняя °C</th>
+                <th><span class="sr-only">Действие</span></th>
+              </tr>
+            </thead>
+            <tbody id="batch-rows"></tbody>
+          </table>
+        </div>
+        <nav id="batch-pagination" class="pagination" aria-label="Навигация по архиву" hidden>
+          <button id="previous-page" class="secondary-button" type="button" data-i18n="previousPage">← Назад</button>
+          <span id="page-label">—</span>
+          <button id="next-page" class="secondary-button" type="button" data-i18n="nextPage">Вперёд →</button>
+        </nav>
+      </section>
+
+      <section id="detail-panel" class="detail-panel" hidden aria-labelledby="detail-title">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow" data-i18n="proofEyebrow">ИСТОРИЧЕСКОЕ ДОКАЗАТЕЛЬСТВО</p>
+            <h2 id="detail-title" data-i18n="proofTitle">Проверка периода</h2>
+          </div>
+          <button id="close-detail" class="icon-button" type="button" aria-label="Закрыть">×</button>
+        </div>
+
+        <div class="detail-grid">
+          <div class="chart-card">
+            <div class="chart-head">
+              <span data-i18n="chartTitle">Температура за период</span>
+              <strong id="detail-average">—</strong>
+            </div>
+            <svg id="temperature-chart" viewBox="0 0 640 220" role="img" aria-label="График температуры"></svg>
+            <div id="chart-tooltip" class="chart-tooltip" hidden></div>
+          </div>
+          <dl id="detail-facts" class="facts"></dl>
+        </div>
+
+        <div class="proof-explanation">
+          <span data-i18n="checkOne">1. Подписи ESP8266</span>
+          <span data-i18n="checkTwo">2. SHA-256 батча</span>
+          <span data-i18n="checkThree">3. Workflow в Rialo</span>
+        </div>
+
+        <section class="chain-proof" aria-labelledby="chain-proof-title">
+          <div class="chain-proof-head">
+            <div>
+              <p class="eyebrow" data-i18n="chainEyebrow">ДОКАЗАТЕЛЬСТВО В СЕТИ</p>
+              <h3 id="chain-proof-title" data-i18n="chainTitle">Сверка архива с Rialo Devnet</h3>
+            </div>
+            <span class="network-badge"><i></i><span data-i18n="chainConfirmed">ПОДТВЕРЖДЕНО В RIALO DEVNET</span></span>
+          </div>
+
+          <div class="digest-compare">
+            <article>
+              <span data-i18n="archiveDigest">Digest из архива</span>
+              <code id="archive-digest">—</code>
+            </article>
+            <strong id="digest-match" aria-label="Результат сравнения">?</strong>
+            <article>
+              <span data-i18n="chainDigest">Digest из Rialo</span>
+              <code id="chain-digest" data-i18n="notChecked">Ещё не запрошен</code>
+            </article>
+          </div>
+
+          <div class="chain-records">
+            <a id="transaction-link" href="#" target="_blank" rel="noopener">
+              <span data-i18n="transactionLabel">Транзакция</span>
+              <strong id="transaction-value">—</strong>
+              <b data-i18n="openExplorer">Открыть в RialoScan ↗</b>
+            </a>
+            <a id="workflow-link" href="#" target="_blank" rel="noopener">
+              <span>Workflow</span>
+              <strong id="workflow-value">—</strong>
+              <b data-i18n="openExplorer">Открыть в RialoScan ↗</b>
+            </a>
+            <a id="program-link" href="#" target="_blank" rel="noopener">
+              <span>Program ID</span>
+              <strong id="program-value">—</strong>
+              <b id="block-value" data-i18n="blockPending">Блок будет прочитан при проверке</b>
+            </a>
+          </div>
+          <p class="rpc-note" data-i18n="rpcNote">Браузер сам проверяет подписи и читает данные через публичный RPC RialoScan. Готовый результат проверки не берётся с сервера архива.</p>
+        </section>
+
+        <div class="detail-actions">
+          <button id="verify-btn" class="primary-button" type="button" data-i18n="verifyButton">Проверить независимо</button>
+          <button id="download-proof-btn" class="secondary-button" type="button" data-i18n="downloadProof">Скачать proof-файл</button>
+        </div>
+        <div id="detail-result" class="result" hidden aria-live="polite"></div>
+      </section>
+
+      <section class="proof-file-section" aria-labelledby="proof-file-title">
+        <div class="verify-panel">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow" data-i18n="fileEyebrow">ПРОВЕРКА СКАЧАННОГО ФАЙЛА</p>
+              <h2 id="proof-file-title" data-i18n="fileTitle">Проверить proof-файл</h2>
+            </div>
+          </div>
+          <label id="proof-drop-zone" class="drop-zone" tabindex="0">
+            <input id="proof-file-input" type="file" accept="application/json,.json">
+            <span class="drop-icon" aria-hidden="true">↓</span>
+            <strong data-i18n="fileChoose">Выберите JSON или перетащите его сюда</strong>
+            <span data-i18n="fileHint">Подойдёт файл, скачанный из истории любого батча</span>
+          </label>
+          <p class="privacy-note" data-i18n="filePrivacy">Файл проверяется только в браузере и не отправляется на сервер.</p>
+          <div id="proof-file-result" class="result" hidden aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="how-it-works" aria-labelledby="process-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow" data-i18n="howEyebrow">КАК РАБОТАЕТ ПРОВЕРКА</p>
+            <h2 id="process-title" data-i18n="howTitle">Проверка не зависит от владельца архива</h2>
+          </div>
+        </div>
+        <div class="steps">
+          <article><b>01</b><h3 data-i18n="stepOneTitle">Архив показывает данные</h3><p data-i18n="stepOneCopy">Сервер хранит показания и время, чтобы историю можно было открыть в браузере.</p></article>
+          <article><b>02</b><h3 data-i18n="stepTwoTitle">Rialo хранит отпечаток</h3><p data-i18n="stepTwoCopy">В сети хранится digest батча. Если архив изменить, значения перестанут совпадать.</p></article>
+          <article><b>03</b><h3 data-i18n="stepThreeTitle">Портал сравнивает</h3><p data-i18n="stepThreeCopy">Если хотя бы одно значение изменится, проверка покажет красное предупреждение.</p></article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="shell footer">
+      <span data-i18n="footerNote">Проект проверяет неизменность записей, но не точность самого датчика. Это независимый open-source эксперимент для Rialo Devnet, не связанный с Rialo Labs или Subzero Labs.</span>
+      <a href="https://github.com/robotek8/rialo-edge-log" target="_blank" rel="noopener">GitHub ↗</a>
+    </footer>
+  </body>
+</html>

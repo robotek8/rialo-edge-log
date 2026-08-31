@@ -1,0 +1,219 @@
+import base64
+import http.client
+import json
+import struct
+import tempfile
+import threading
+import unittest
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+
+from gateway.edge_gateway import (
+    canonical_reading_payload,
+    create_batch,
+    empty_registry,
+    enroll_registration,
+    save_batch,
+    save_registry,
+)
+from gateway.portal import PortalStore, handler_factory
+from gateway.rialo_args import build_arguments
+
+
+def signed_reading(
+    private_key: ec.EllipticCurvePrivateKey, sequence: int
+) -> dict:
+    reading = {
+        "message_type": "telemetry",
+        "schema_version": 2,
+        "device_id": "edge-0E0473",
+        "sequence": sequence,
+        "uptime_ms": sequence * 5000,
+        "temperature_milli_c": 4200 + sequence,
+        "temperature_c": (4200 + sequence) / 1000.0,
+        "simulated": True,
+        "signature_algorithm": "ecdsa-p256-sha256-raw",
+        "signature": "0" * 128,
+    }
+    der = private_key.sign(
+        canonical_reading_payload(reading), ec.ECDSA(hashes.SHA256())
+    )
+    r_value, s_value = decode_dss_signature(der)
+    reading["signature"] = (
+        r_value.to_bytes(32, "big") + s_value.to_bytes(32, "big")
+    ).hex()
+    return reading
+
+
+class PortalTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.temporary.name)
+        self.private_key = ec.generate_private_key(ec.SECP256R1())
+        self.public_key = self.private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint,
+        ).hex()
+        self.batch = create_batch(
+            [signed_reading(self.private_key, number) for number in range(1, 4)],
+            public_key_hex=self.public_key,
+        )
+        self.batch_path = save_batch(self.batch, self.data_dir)
+
+        registry = empty_registry()
+        enrolled, _ = enroll_registration(
+            registry,
+            {
+                "device_id": self.batch["device_id"],
+                "public_key_sec1": self.public_key,
+            },
+        )
+        self.assertTrue(enrolled)
+        save_registry(registry, self.data_dir / "device_registry.json")
+
+        self.program_id = "PROGRAM123"
+        self.workflow = "WORKFLOW456"
+        self.transaction = "TRANSACTION789"
+        argument_values = [value for _, value in build_arguments(self.batch)]
+        raw_state = struct.pack("<13Q", 1, *argument_values)
+        self.account = {
+            "owner": self.program_id,
+            "data": [base64.b64encode(raw_state).decode("ascii"), "base64"],
+        }
+        self.transaction_result = {
+            "transaction": {
+                "message": {
+                    "accountKeys": ["PAYER", self.workflow, self.program_id],
+                    "instructions": [{"programIdIndex": 2, "accounts": [0, 1]}],
+                }
+            },
+            "meta": {"err": None},
+        }
+        receipt_dir = self.data_dir / "receipts"
+        receipt_dir.mkdir()
+        self.receipt_path = receipt_dir / f"{self.batch['batch_id']}-rialo.json"
+        self.receipt_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "status": "RIALO_VERIFIED",
+                    "batch_id": self.batch["batch_id"],
+                    "program_id": self.program_id,
+                    "transaction_signature": self.transaction,
+                    "workflow_address": self.workflow,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        transaction_result = self.transaction_result
+        account = self.account
+
+        class FakeClient:
+            def get_transaction(self, signature: str) -> dict:
+                if signature != "TRANSACTION789":
+                    raise AssertionError("unexpected transaction")
+                return transaction_result
+
+            def get_account_info(self, address: str) -> dict:
+                if address != "WORKFLOW456":
+                    raise AssertionError("unexpected workflow")
+                return account
+
+        self.store = PortalStore(
+            self.data_dir, client_factory=lambda _url: FakeClient()
+        )
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_lists_real_batches_and_receipt_status(self) -> None:
+        batches = self.store.list_batches()
+        self.assertEqual(len(batches), 1)
+        self.assertEqual(batches[0]["status"], "ANCHORED")
+        self.assertEqual(batches[0]["first_sequence"], 1)
+        self.assertAlmostEqual(batches[0]["temperature"]["average"], 4.202)
+
+    def test_batch_detail_includes_public_browser_verification_bundle(self) -> None:
+        detail = self.store.get_batch(self.batch["batch_id"])
+        bundle = detail["proof_bundle"]
+        self.assertEqual(bundle["bundle_type"], "rialo-edge-log-proof")
+        self.assertEqual(bundle["batch"]["proof"]["digest"], self.batch["proof"]["digest"])
+        self.assertEqual(bundle["device"]["public_key_sec1"], self.public_key)
+
+    def test_exported_bundle_verifies_against_rialo(self) -> None:
+        bundle = self.store.export_bundle(self.batch["batch_id"])
+        result = self.store.verify_bundle(bundle)
+        self.assertEqual(result["status"], "RIALO_VERIFIED")
+        self.assertTrue(result["rialo_verified"])
+        self.assertEqual(bundle["device"]["public_key_sec1"], self.public_key)
+
+    def test_changed_exported_bundle_is_detected(self) -> None:
+        bundle = self.store.export_bundle(self.batch["batch_id"])
+        bundle["batch"]["readings"][0]["temperature_c"] += 10.0
+        bundle["batch"]["readings"][0]["temperature_milli_c"] += 10_000
+        result = self.store.verify_bundle(bundle)
+        self.assertEqual(result["status"], "TAMPERED")
+
+    def test_tamper_demo_never_changes_original_batch(self) -> None:
+        before = self.batch_path.read_bytes()
+        result = self.store.simulate_tampering(self.batch["batch_id"])
+        self.assertEqual(result["status"], "TAMPERED")
+        self.assertFalse(result["original_file_changed"])
+        self.assertEqual(self.batch_path.read_bytes(), before)
+
+    def test_unanchored_batch_can_still_pass_local_verification(self) -> None:
+        self.receipt_path.unlink()
+        result = self.store.verify(self.batch["batch_id"])
+        self.assertEqual(result["status"], "LOCAL_VERIFIED")
+        self.assertFalse(result["rialo_verified"])
+
+    def test_http_server_exposes_dashboard_and_batch_api(self) -> None:
+        static_directory = Path(__file__).resolve().parent.parent / "portal"
+        server = ThreadingHTTPServer(
+            ("127.0.0.1", 0), handler_factory(self.store, static_directory)
+        )
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=2
+            )
+            connection.request("GET", "/api/batches")
+            response = connection.getresponse()
+            payload = json.loads(response.read())
+            self.assertEqual(response.status, 200)
+            self.assertEqual(payload["count"], 1)
+
+            connection.request("GET", "/")
+            response = connection.getresponse()
+            html = response.read().decode("utf-8")
+            self.assertEqual(response.status, 200)
+            self.assertIn("Verified Telemetry", html)
+            self.assertIn('id="lang-en"', html)
+            self.assertIn('id="lang-ru"', html)
+            self.assertIn('id="chart-tooltip"', html)
+            self.assertIn('id="batch-pagination"', html)
+            self.assertIn('id="download-proof-btn"', html)
+            self.assertIn('rel="icon" href="/favicon.svg"', html)
+            self.assertIn('rel="manifest" href="/site.webmanifest"', html)
+            self.assertIn('/verifier.js', html)
+
+            connection.request("GET", "/favicon.svg")
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.getheader("Content-Type"), "image/svg+xml; charset=utf-8")
+            self.assertIn(b"#FF7A1A", response.read())
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+
+if __name__ == "__main__":
+    unittest.main()

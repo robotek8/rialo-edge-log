@@ -1,0 +1,21 @@
+{
+  "name": "Rialo Edge Log",
+  "short_name": "Edge Log",
+  "description": "Verifiable IoT telemetry anchored on Rialo Devnet.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#10161a",
+  "theme_color": "#11171c",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

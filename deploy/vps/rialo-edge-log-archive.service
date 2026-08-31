@@ -1,0 +1,22 @@
+[Unit]
+Description=Rialo Edge Log public archive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rialo-edge-log
+Group=rialo-edge-log
+WorkingDirectory=/opt/rialo-edge-log
+EnvironmentFile=/etc/rialo-edge-log/archive.env
+ExecStart=/opt/rialo-edge-log/.venv/bin/python -m archive.server --host 127.0.0.1 --port 8090 --database /var/lib/rialo-edge-log/archive.sqlite3
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rialo-edge-log
+
+[Install]
+WantedBy=multi-user.target

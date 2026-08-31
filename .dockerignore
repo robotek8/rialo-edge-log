@@ -1,0 +1,9 @@
+.git
+.github
+data
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.venv
+firmware/**/device_secrets.h
+

@@ -1,0 +1,36 @@
+services:
+  archive:
+    build:
+      context: ../..
+      dockerfile: deploy/vps-docker/Dockerfile
+    container_name: rialo-edge-log
+    restart: unless-stopped
+    init: true
+    env_file:
+      - /etc/rialo-edge-log/archive.env
+    volumes:
+      - /var/lib/rialo-edge-log:/var/lib/rialo-edge-log
+    expose:
+      - "8090"
+    networks:
+      node_default:
+        aliases:
+          - rialo-edge-log
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  node_default:
+    external: true
+
