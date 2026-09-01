@@ -8,19 +8,35 @@ PowerShell windows:
 - `Publisher`: uploads only Rialo-verified batches to the HTTPS archive.
 
 `Install-EdgeStack.ps1` registers one scheduled task per worker for the current
-Windows user. Each task starts at logon and its wrapper restarts the worker ten
-seconds after an exit. Output and error logs are written under
+Windows user. Each task starts with Windows, before interactive sign-in, and its
+wrapper restarts the worker ten seconds after an exit. Locking Windows or leaving
+the computer at the sign-in screen does not stop telemetry. Sleep and hibernation
+still pause all three workers. Output and error logs are written under
 `%LOCALAPPDATA%\RialoEdgeLog\logs`.
 
 The archive token is stored using Windows DPAPI. It can only be decrypted by
 the same Windows account on the same computer. It is never written into the
 repository, task command line or log files.
 
-From the repository root, install the tasks once:
+Open PowerShell as Administrator. From the repository root, install or update
+the tasks:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\deploy\windows-edge\Install-EdgeStack.ps1
+```
+
+The installer asks for the Windows account password so Task Scheduler can run
+the workers before sign-in. Enter the account password, not the Windows Hello
+PIN. The password is handed directly to Task Scheduler and is not written to
+the repository, configuration, command line or logs. Re-run the installer after
+changing the Windows account password.
+
+An existing DPAPI-protected archive token is reused during task updates. Use
+`-RefreshArchiveToken` only when the VPS ingestion token has been rotated:
+
+```powershell
+.\deploy\windows-edge\Install-EdgeStack.ps1 -RefreshArchiveToken
 ```
 
 Close any manually running gateway, anchor and publisher processes before
@@ -37,4 +53,3 @@ the serial port:
 ```powershell
 .\deploy\windows-edge\Manage-EdgeStack.ps1 stop
 ```
-
