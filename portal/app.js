@@ -262,6 +262,8 @@ const translations = {
 };
 
 let initialPageLoad = true;
+const AUTO_REFRESH_INTERVAL_MS = 30_000;
+let archiveRefreshPromise = null;
 
 function forcePageTop() {
   document.documentElement.scrollTop = 0;
@@ -403,14 +405,16 @@ function renderNetworkStatus() {
   elements.networkNote.textContent = network ? t("networkEstimate") : t("networkError");
 }
 
-async function loadNetworkStatus() {
+async function loadNetworkStatus({ showLoading = true, preserveOnError = false } = {}) {
   const badgeText = elements.networkStatus.querySelector("span");
-  elements.networkStatus.classList.remove("warning");
-  badgeText.textContent = t("networkLoading");
+  if (showLoading) {
+    elements.networkStatus.classList.remove("warning");
+    badgeText.textContent = t("networkLoading");
+  }
   try {
     state.network = await requestJson("/api/network-status");
   } catch (_error) {
-    state.network = null;
+    if (!preserveOnError) state.network = null;
   }
   renderNetworkStatus();
 }
@@ -486,16 +490,27 @@ function renderProofStream() {
   elements.proofStreamTrack.append(primary, duplicate);
 }
 
-async function loadProofStream() {
+function proofStreamSignature(batches) {
+  return batches
+    .map((batch) => `${batch.batch_id || ""}:${batch.transaction_signature || ""}`)
+    .join("|");
+}
+
+async function loadProofStream({ forceRender = false, preserveOnError = false } = {}) {
   try {
     const payload = await requestJson("/api/batches");
-    state.proofStream = (Array.isArray(payload.batches) ? payload.batches : [])
+    const nextProofStream = (Array.isArray(payload.batches) ? payload.batches : [])
       .filter((batch) => batch.transaction_signature)
       .slice(0, 8);
+    const changed = proofStreamSignature(nextProofStream) !== proofStreamSignature(state.proofStream);
+    state.proofStream = nextProofStream;
+    if (forceRender || changed) renderProofStream();
   } catch (_error) {
-    state.proofStream = [];
+    if (!preserveOnError) {
+      state.proofStream = [];
+      renderProofStream();
+    }
   }
-  renderProofStream();
 }
 
 function statusNode(label = t("verified")) {
@@ -652,24 +667,28 @@ function renderDevices() {
   elements.deviceEmpty.hidden = state.devices.length !== 0;
 }
 
-async function loadDevices() {
+async function loadDevices({ restoreDeepLink = false, preserveOnError = false } = {}) {
   try {
     const payload = await requestJson("/api/devices");
-    state.devices = payload.devices;
+    state.devices = Array.isArray(payload.devices) ? payload.devices : [];
     renderDevices();
-    const parameters = new URLSearchParams(window.location.search);
-    const requested = parameters.get("device");
-    if (requested && state.devices.some((device) => device.device_id === requested)) {
-      await selectDevice(requested, false, false);
-      const batch = parameters.get("batch");
-      if (batch) await showBatch(batch, false, false);
+    if (restoreDeepLink) {
+      const parameters = new URLSearchParams(window.location.search);
+      const requested = parameters.get("device");
+      if (requested && state.devices.some((device) => device.device_id === requested)) {
+        await selectDevice(requested, false, false);
+        const batch = parameters.get("batch");
+        if (batch) await showBatch(batch, false, false);
+      }
     }
   } catch (error) {
-    elements.deviceEmpty.hidden = false;
-    elements.deviceEmpty.replaceChildren();
-    const text = document.createElement("strong");
-    text.textContent = `${t("archiveUnavailable")}: ${error.message}`;
-    elements.deviceEmpty.append(text);
+    if (!preserveOnError) {
+      elements.deviceEmpty.hidden = false;
+      elements.deviceEmpty.replaceChildren();
+      const text = document.createElement("strong");
+      text.textContent = `${t("archiveUnavailable")}: ${error.message}`;
+      elements.deviceEmpty.append(text);
+    }
   } finally {
     if (initialPageLoad) {
       initialPageLoad = false;
@@ -747,6 +766,33 @@ async function selectDevice(deviceId, updateUrl = true, scrollToHistory = true) 
   if (scrollToHistory) {
     elements.history.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+}
+
+async function loadSelectedDeviceHistory() {
+  const deviceId = state.selectedDeviceId;
+  if (!deviceId) return;
+  try {
+    const payload = await requestJson(`/api/devices/${encodeURIComponent(deviceId)}`);
+    if (state.selectedDeviceId !== deviceId) return;
+    state.batches = Array.isArray(payload.batches) ? payload.batches : [];
+    renderBatches();
+  } catch (_error) {
+    // Keep the currently visible history during a transient background failure.
+  }
+}
+
+function refreshArchive({ initial = false, showNetworkLoading = false } = {}) {
+  if (archiveRefreshPromise) return archiveRefreshPromise;
+  const preserveOnError = !initial;
+  const requests = [
+    loadDevices({ restoreDeepLink: initial, preserveOnError }),
+    loadNetworkStatus({ showLoading: showNetworkLoading, preserveOnError }),
+    loadProofStream({ forceRender: initial, preserveOnError }),
+  ];
+  if (!initial) requests.push(loadSelectedDeviceHistory());
+  archiveRefreshPromise = Promise.all(requests)
+    .finally(() => { archiveRefreshPromise = null; });
+  return archiveRefreshPromise;
 }
 
 function fact(label, value, title = "") {
@@ -1051,10 +1097,13 @@ async function applyLanguage(language, remember = true, updateAddress = true) {
 
 document.querySelector("#lang-en").addEventListener("click", () => applyLanguage("en"));
 document.querySelector("#lang-ru").addEventListener("click", () => applyLanguage("ru"));
-document.querySelector("#refresh-btn").addEventListener("click", () => {
-  loadDevices();
-  loadNetworkStatus();
-  loadProofStream();
+document.querySelector("#refresh-btn").addEventListener("click", async (event) => {
+  event.currentTarget.disabled = true;
+  try {
+    await refreshArchive();
+  } finally {
+    event.currentTarget.disabled = false;
+  }
 });
 elements.previousPage.addEventListener("click", () => {
   state.batchPage -= 1;
@@ -1116,7 +1165,10 @@ document.querySelector("#copy-link-btn").addEventListener("click", async (event)
 });
 
 applyLanguage(state.language, false, false);
-loadDevices();
-loadNetworkStatus();
-loadProofStream();
-window.setInterval(renderDevices, 60_000);
+refreshArchive({ initial: true, showNetworkLoading: true });
+window.setInterval(() => {
+  if (!document.hidden) refreshArchive();
+}, AUTO_REFRESH_INTERVAL_MS);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshArchive();
+});

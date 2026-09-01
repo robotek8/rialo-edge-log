@@ -13,6 +13,7 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 
 ### Fixed
 
+- Refreshed devices, selected history, Rialo transactions, and network status automatically every 30 seconds without reloading the portal.
 - Retried transient Rialo anchoring failures and recovered unprocessed verified batches after Windows worker restarts.
 - Changed the Windows edge tasks from interactive logon triggers to password-backed startup tasks, so telemetry starts before sign-in and continues while Windows is locked.
 - Unified public-facing terminology around “Verifiable Telemetry”; “Verified” now remains only for completed proof results.
