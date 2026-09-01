@@ -21,7 +21,11 @@ from gateway.edge_gateway import (
     save_registry,
 )
 from gateway.portal import PortalStore, handler_factory
-from gateway.rialo_args import build_arguments, build_registration_arguments
+from gateway.rialo_args import (
+    build_arguments,
+    build_registration_arguments,
+    registration_workflow_slug,
+)
 
 
 def signed_reading(
@@ -156,7 +160,9 @@ class PortalTests(unittest.TestCase):
                     "program_id": self.program_id,
                     "transaction_signature": self.registration_transaction,
                     "workflow_address": self.registration_workflow,
-                    "workflow_slug": "device-e0473",
+                    "workflow_slug": registration_workflow_slug(
+                        self.batch["device_id"]
+                    ),
                     "registrar": "PAYER",
                 }
             ),

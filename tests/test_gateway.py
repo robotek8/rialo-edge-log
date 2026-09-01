@@ -541,14 +541,17 @@ class RialoAnchoringTests(unittest.TestCase):
 
     def test_registration_command_uses_deterministic_device_workflow(self) -> None:
         fingerprint = self.batch["device_public_key_fingerprint"]
+        slug = registration_workflow_slug(self.batch["device_id"])
         command = build_registration_command(
             self.batch["device_id"], fingerprint, self.program_id
         )
         self.assertIn("--function register", command)
-        self.assertIn(
-            f"workflow_pda_slug={registration_workflow_slug(self.batch['device_id'])}",
-            command,
+        self.assertRegex(slug, r"^[0-9a-f]{64}$")
+        self.assertEqual(
+            slug,
+            registration_workflow_slug(self.batch["device_id"].lower()),
         )
+        self.assertIn(f"workflow_pda_slug={slug}", command)
 
     def test_device_registration_is_verified_and_saved(self) -> None:
         signature = (

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +60,9 @@ def build_arguments(batch: dict[str, Any]) -> list[tuple[str, int]]:
 
 
 def registration_workflow_slug(device_id: str) -> str:
-    return f"device-{device_id_to_u64(device_id):x}"
+    canonical_device_id = f"{device_id_to_u64(device_id):016x}"
+    value = f"rialo-edge-log/device-registration/{canonical_device_id}"
+    return sha256(value.encode("ascii")).hexdigest()
 
 
 def build_registration_arguments(
