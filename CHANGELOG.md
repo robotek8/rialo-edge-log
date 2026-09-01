@@ -6,6 +6,7 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 
 ### Added
 
+- Deployed the device-registration Venus program at `GVJpRi8SVURsjKbLC84Azk24vV2cK3ib74aXRk5hdatF` on Rialo Devnet.
 - Added a one-time Rialo workflow that binds each device ID to its P-256 public-key fingerprint, signed by the project's published registrar wallet.
 - Added independent device-registration checks to both the Python verifier and the browser verifier before new proof bundles are accepted.
 - Added signed boot IDs, reset reasons, and optional enclosure-tamper state to telemetry schema 3 while preserving schema-2 verification.

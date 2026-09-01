@@ -57,7 +57,7 @@ DS18B20 will be connected in the next hardware revision.
 - one-time on-chain registration of the device ID and public-key fingerprint
 
 The deployed Venus program ID is
-`AfbPSJCLnmAAxhG66QoSV1Pp3WbTY6VNx55SZoKBnB7x`.
+`GVJpRi8SVURsjKbLC84Azk24vV2cK3ib74aXRk5hdatF`.
 
 An early confirmed example covers device `edge-0E0473`, sequences `73-84`:
 
