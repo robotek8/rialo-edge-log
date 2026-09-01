@@ -237,6 +237,14 @@ class PortalTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def test_portal_auto_refreshes_live_archive_data(self) -> None:
+        static_directory = Path(__file__).resolve().parent.parent / "portal"
+        script = (static_directory / "app.js").read_text(encoding="utf-8")
+        self.assertIn("const AUTO_REFRESH_INTERVAL_MS = 30_000;", script)
+        self.assertIn("loadSelectedDeviceHistory()", script)
+        self.assertIn('document.addEventListener("visibilitychange"', script)
+        self.assertNotIn("window.setInterval(renderDevices", script)
+
 
 if __name__ == "__main__":
     unittest.main()
