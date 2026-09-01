@@ -18,6 +18,12 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 from urllib.parse import unquote, urlparse
 
+from gateway.edge_gateway import (
+    SIGNED_SCHEMA_VERSIONS,
+    parse_telemetry_line,
+    public_key_fingerprint,
+    verify_reading_signature,
+)
 from gateway.portal import PortalError, PortalStore, temperature_stats
 from gateway.rialo_verify import (
     DEFAULT_RPC_URL,
@@ -31,6 +37,7 @@ from gateway.rialo_verify import (
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8090
 MAX_INGEST_BYTES = 2_000_000
+MAX_HEARTBEAT_BYTES = 32_000
 TOKEN_ENVIRONMENT_VARIABLE = "RIALO_EDGE_LOG_INGEST_TOKEN"
 STATIC_FILES = {
     "/": "index.html",
@@ -94,7 +101,14 @@ class ArchiveStore:
                     public_key_fingerprint TEXT NOT NULL,
                     first_seen_utc TEXT NOT NULL,
                     last_seen_utc TEXT NOT NULL,
-                    batch_count INTEGER NOT NULL DEFAULT 0
+                    batch_count INTEGER NOT NULL DEFAULT 0,
+                    heartbeat_at_utc TEXT,
+                    heartbeat_sequence INTEGER,
+                    heartbeat_uptime_ms INTEGER,
+                    heartbeat_boot_id INTEGER,
+                    heartbeat_reset_reason TEXT,
+                    heartbeat_tamper_open INTEGER,
+                    heartbeat_temperature_c REAL
                 );
 
                 CREATE TABLE IF NOT EXISTS batches (
@@ -116,6 +130,24 @@ class ArchiveStore:
                 ON batches(device_id, created_at_utc DESC);
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(devices)").fetchall()
+            }
+            migrations = {
+                "heartbeat_at_utc": "TEXT",
+                "heartbeat_sequence": "INTEGER",
+                "heartbeat_uptime_ms": "INTEGER",
+                "heartbeat_boot_id": "INTEGER",
+                "heartbeat_reset_reason": "TEXT",
+                "heartbeat_tamper_open": "INTEGER",
+                "heartbeat_temperature_c": "REAL",
+            }
+            for name, column_type in migrations.items():
+                if name not in columns:
+                    connection.execute(
+                        f"ALTER TABLE devices ADD COLUMN {name} {column_type}"
+                    )
 
     def _verifier(self) -> PortalStore:
         return PortalStore(
@@ -261,10 +293,92 @@ class ArchiveStore:
             "device_id": fields["device_id"],
         }
 
+    def ingest_heartbeat(self, heartbeat: dict[str, Any]) -> dict[str, Any]:
+        if (
+            heartbeat.get("message_type") != "device_heartbeat"
+            or heartbeat.get("schema_version") != 1
+        ):
+            raise ArchiveError("heartbeat envelope is invalid")
+        device_id = heartbeat.get("device_id")
+        device = heartbeat.get("device")
+        raw_reading = heartbeat.get("reading")
+        if not isinstance(device_id, str) or not isinstance(device, dict) or not isinstance(raw_reading, dict):
+            raise ArchiveError("heartbeat identity or reading is missing")
+        public_key = device.get("public_key_sec1")
+        fingerprint = device.get("fingerprint_sha256")
+        if not isinstance(public_key, str) or not isinstance(fingerprint, str):
+            raise ArchiveError("heartbeat public key is missing")
+        if public_key_fingerprint(public_key) != fingerprint:
+            raise ArchiveError("heartbeat public-key fingerprint does not match")
+        try:
+            reading = parse_telemetry_line(
+                json.dumps(raw_reading, ensure_ascii=False, allow_nan=False)
+            )
+        except (TypeError, ValueError) as exc:
+            raise ArchiveError(f"heartbeat telemetry is invalid: {exc}") from exc
+        if reading["schema_version"] not in SIGNED_SCHEMA_VERSIONS:
+            raise ArchiveError("heartbeat telemetry is not signed")
+        if reading["device_id"] != device_id:
+            raise ArchiveError("heartbeat device IDs do not match")
+        if not verify_reading_signature(reading, public_key):
+            raise ArchiveError("heartbeat signature is invalid")
+
+        received_at = utc_now_text()
+        with self._connect() as connection:
+            existing = connection.execute(
+                "SELECT public_key_sec1, public_key_fingerprint FROM devices WHERE device_id = ?",
+                (device_id,),
+            ).fetchone()
+            if existing is None:
+                raise ArchiveError("device must publish one verified batch before heartbeats")
+            if (
+                existing["public_key_sec1"] != public_key
+                or existing["public_key_fingerprint"] != fingerprint
+            ):
+                raise ArchiveError("heartbeat key does not match the registered device")
+            connection.execute(
+                """
+                UPDATE devices
+                SET last_seen_utc = ?, heartbeat_at_utc = ?,
+                    heartbeat_sequence = ?, heartbeat_uptime_ms = ?,
+                    heartbeat_boot_id = ?, heartbeat_reset_reason = ?,
+                    heartbeat_tamper_open = ?, heartbeat_temperature_c = ?
+                WHERE device_id = ?
+                """,
+                (
+                    received_at,
+                    received_at,
+                    reading["sequence"],
+                    reading["uptime_ms"],
+                    reading.get("boot_id"),
+                    reading.get("reset_reason"),
+                    int(reading["tamper_open"]) if "tamper_open" in reading else None,
+                    reading["temperature_c"],
+                    device_id,
+                ),
+            )
+        return {
+            "status": "HEARTBEAT_ACCEPTED",
+            "device_id": device_id,
+            "sequence": reading["sequence"],
+            "received_at_utc": received_at,
+        }
+
     @staticmethod
     def _batch_summary(row: sqlite3.Row) -> dict[str, Any]:
         bundle = json.loads(row["bundle_json"])
         batch = bundle["batch"]
+        readings = [
+            reading
+            for reading in batch.get("readings", [])
+            if isinstance(reading, dict)
+        ]
+        boot_ids = [reading.get("boot_id") for reading in readings if reading.get("boot_id") is not None]
+        tamper_states = [
+            reading.get("tamper_open")
+            for reading in readings
+            if isinstance(reading.get("tamper_open"), bool)
+        ]
         return {
             "batch_id": row["batch_id"],
             "device_id": row["device_id"],
@@ -277,12 +391,15 @@ class ArchiveStore:
             "workflow_address": row["workflow_address"],
             "temperature": temperature_stats(batch.get("readings")),
             "simulated": bool(
-                batch.get("readings")
+                readings
                 and all(
-                    isinstance(reading, dict) and reading.get("simulated") is True
-                    for reading in batch["readings"]
+                    reading.get("simulated") is True
+                    for reading in readings
                 )
             ),
+            "boot_id": boot_ids[-1] if boot_ids else None,
+            "reset_reason": readings[0].get("reset_reason") if readings else None,
+            "tamper_open": any(tamper_states) if tamper_states else None,
             "status": "ANCHORED",
         }
 
@@ -310,10 +427,24 @@ class ArchiveStore:
                     "public_key_fingerprint": row["public_key_fingerprint"],
                     "first_seen_utc": row["first_seen_utc"],
                     "last_seen_utc": row["last_seen_utc"],
+                    "latest_seen_utc": row["heartbeat_at_utc"] or row["latest_batch_utc"],
                     "batch_count": row["batch_count"],
-                    "last_sequence": row["last_sequence"],
+                    "last_sequence": row["heartbeat_sequence"] or row["last_sequence"],
                     "latest_batch_utc": row["latest_batch_utc"],
-                    "latest_temperature_c": stats["average"],
+                    "latest_temperature_c": (
+                        row["heartbeat_temperature_c"]
+                        if row["heartbeat_temperature_c"] is not None
+                        else stats["average"]
+                    ),
+                    "heartbeat_at_utc": row["heartbeat_at_utc"],
+                    "uptime_ms": row["heartbeat_uptime_ms"],
+                    "boot_id": row["heartbeat_boot_id"],
+                    "reset_reason": row["heartbeat_reset_reason"],
+                    "tamper_open": (
+                        bool(row["heartbeat_tamper_open"])
+                        if row["heartbeat_tamper_open"] is not None
+                        else None
+                    ),
                 }
             )
         return devices
@@ -343,6 +474,9 @@ class ArchiveStore:
                 "sequence": reading.get("sequence"),
                 "temperature_c": reading.get("temperature_c"),
                 "uptime_ms": reading.get("uptime_ms"),
+                "boot_id": reading.get("boot_id"),
+                "reset_reason": reading.get("reset_reason"),
+                "tamper_open": reading.get("tamper_open"),
                 "simulated": reading.get("simulated"),
             }
             for reading in bundle["batch"].get("readings", [])
@@ -573,6 +707,28 @@ class ArchiveHandler(BaseHTTPRequestHandler):
                 if not isinstance(value, dict):
                     raise ArchiveError("proof bundle must be a JSON object")
                 self._send_json(self.store.ingest(value), HTTPStatus.CREATED)
+                return
+
+            if path == "/api/heartbeat":
+                authorization = self.headers.get("Authorization", "")
+                expected = f"Bearer {self.ingest_token}"
+                if not self.ingest_token or not hmac.compare_digest(
+                    authorization, expected
+                ):
+                    self._send_json(
+                        {"error": "valid ingest token is required"},
+                        HTTPStatus.UNAUTHORIZED,
+                    )
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                if length < 1 or length > MAX_HEARTBEAT_BYTES:
+                    raise ArchiveError("heartbeat must be between 1 byte and 32 KB")
+                value = json.loads(self.rfile.read(length).decode("utf-8"))
+                if not isinstance(value, dict):
+                    raise ArchiveError("heartbeat must be a JSON object")
+                self._send_json(
+                    self.store.ingest_heartbeat(value), HTTPStatus.ACCEPTED
+                )
                 return
 
             suffix = "/verify"

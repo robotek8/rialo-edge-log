@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <StackThunk.h>
 #include <bearssl/bearssl.h>
+#include <user_interface.h>
 
 #include "device_secrets.h"
 
@@ -33,7 +34,14 @@ constexpr int32_t kMaximumTemperatureMilliC = 5500;
 constexpr size_t kSha256Length = 32;
 constexpr size_t kRawP256SignatureLength = 64;
 
+// Set this to a free NodeMCU pin such as D5 when a normally-closed enclosure
+// switch is installed. Leave -1 to report tamper_open=false without using a pin.
+constexpr int8_t kTamperPin = -1;
+constexpr bool kTamperOpenWhenHigh = true;
+
 char deviceId[24];
+char resetReason[24] = "unknown";
+uint32_t bootId = 0;
 uint32_t sequenceNumber = 0;
 uint32_t nextSampleAtMs = 0;
 int32_t simulatedTemperatureMilliC = 4200;
@@ -88,6 +96,30 @@ bool signPayload(const char* payload, char* signatureHex) {
   return true;
 }
 
+void detectResetReason() {
+  const String reason = ESP.getResetReason();
+  const char* code = "unknown";
+  if (reason.indexOf("Power") >= 0) {
+    code = "power_on";
+  } else if (reason.indexOf("External") >= 0) {
+    code = "external_reset";
+  } else if (reason.indexOf("Watchdog") >= 0) {
+    code = "watchdog_reset";
+  } else if (reason.indexOf("Software") >= 0 || reason.indexOf("restart") >= 0) {
+    code = "software_reset";
+  } else if (reason.indexOf("Deep-Sleep") >= 0) {
+    code = "deep_sleep_wake";
+  } else if (reason.indexOf("Exception") >= 0) {
+    code = "exception_reset";
+  }
+  strlcpy(resetReason, code, sizeof(resetReason));
+}
+
+bool isTamperOpen() {
+  if (kTamperPin < 0) return false;
+  return digitalRead(kTamperPin) == (kTamperOpenWhenHigh ? HIGH : LOW);
+}
+
 void printRegistration() {
   Serial.printf(
       "{\"message_type\":\"device_registration\","
@@ -101,16 +133,20 @@ void printRegistration() {
 void printSignedTelemetry() {
   ++sequenceNumber;
   const uint32_t uptimeMs = millis();
+  const bool tamperOpen = isTamperOpen();
 
-  char canonicalPayload[128];
+  char canonicalPayload[192];
   snprintf(
       canonicalPayload,
       sizeof(canonicalPayload),
-      "2|%s|%lu|%lu|%ld|1",
+      "3|%s|%lu|%lu|%ld|1|%lu|%s|%u",
       deviceId,
       static_cast<unsigned long>(sequenceNumber),
       static_cast<unsigned long>(uptimeMs),
-      static_cast<long>(simulatedTemperatureMilliC));
+      static_cast<long>(simulatedTemperatureMilliC),
+      static_cast<unsigned long>(bootId),
+      resetReason,
+      tamperOpen ? 1U : 0U);
 
   char signatureHex[kRawP256SignatureLength * 2 + 1];
   if (!signPayload(canonicalPayload, signatureHex)) {
@@ -119,10 +155,11 @@ void printSignedTelemetry() {
   }
 
   Serial.printf(
-      "{\"message_type\":\"telemetry\",\"schema_version\":2,"
+      "{\"message_type\":\"telemetry\",\"schema_version\":3,"
       "\"device_id\":\"%s\",\"sequence\":%lu,\"uptime_ms\":%lu,"
       "\"temperature_milli_c\":%ld,\"temperature_c\":%.3f,"
-      "\"simulated\":true,"
+      "\"simulated\":true,\"boot_id\":%lu,"
+      "\"reset_reason\":\"%s\",\"tamper_open\":%s,"
       "\"signature_algorithm\":\"ecdsa-p256-sha256-raw\","
       "\"signature\":\"%s\"}\n",
       deviceId,
@@ -130,6 +167,9 @@ void printSignedTelemetry() {
       static_cast<unsigned long>(uptimeMs),
       static_cast<long>(simulatedTemperatureMilliC),
       static_cast<double>(simulatedTemperatureMilliC) / 1000.0,
+      static_cast<unsigned long>(bootId),
+      resetReason,
+      tamperOpen ? "true" : "false",
       signatureHex);
 }
 
@@ -144,11 +184,18 @@ void setup() {
 
   stack_thunk_add_ref();
   snprintf(deviceId, sizeof(deviceId), "edge-%06X", ESP.getChipId());
-  randomSeed(ESP.getCycleCount());
+  detectResetReason();
+  bootId = os_random();
+  if (bootId == 0) bootId = ESP.getCycleCount() ^ ESP.getChipId();
+  randomSeed(bootId);
+  if (kTamperPin >= 0) {
+    pinMode(kTamperPin, kTamperOpenWhenHigh ? INPUT_PULLUP : INPUT);
+  }
 
   Serial.println();
   Serial.println("Rialo Edge Log - signed NodeMCU telemetry");
   Serial.printf("Device ID: %s\n", deviceId);
+  Serial.printf("Boot ID: %08lx, reset: %s\n", static_cast<unsigned long>(bootId), resetReason);
   printRegistration();
   nextSampleAtMs = millis();
 }

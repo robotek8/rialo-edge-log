@@ -88,6 +88,11 @@
   }
 
   function canonicalReading(reading) {
+    if (reading.schema_version === 3) {
+      return TEXT_ENCODER.encode(
+        `3|${reading.device_id}|${reading.sequence}|${reading.uptime_ms}|${reading.temperature_milli_c}|${reading.simulated ? 1 : 0}|${reading.boot_id}|${reading.reset_reason}|${reading.tamper_open ? 1 : 0}`,
+      );
+    }
     return TEXT_ENCODER.encode(
       `2|${reading.device_id}|${reading.sequence}|${reading.uptime_ms}|${reading.temperature_milli_c}|${reading.simulated ? 1 : 0}`,
     );
@@ -108,7 +113,7 @@
     }
     let verified = 0;
     for (const reading of batch.readings) {
-      assert(reading.schema_version === 2, "Unsigned reading found in a signed batch");
+      assert([2, 3].includes(reading.schema_version), "Unsigned reading found in a signed batch");
       const valid = await global.crypto.subtle.verify(
         { name: "ECDSA", hash: "SHA-256" },
         key,

@@ -49,6 +49,8 @@ DS18B20 will be connected in the next hardware revision.
 - HTTPS archive at [rialo-edge-log.xyz](https://rialo-edge-log.xyz)
 - independent browser checks and links to the matching RialoScan records
 - Docker deployment for the archive and hidden Windows background tasks
+- signed boot-session, reset-reason, and enclosure-tamper telemetry fields
+- one-minute signed heartbeats for live device presence on the public portal
 
 The deployed Venus program ID is
 `AfbPSJCLnmAAxhG66QoSV1Pp3WbTY6VNx55SZoKBnB7x`.
@@ -80,6 +82,11 @@ edited later, verification fails.
 It does not prove that the sensor was calibrated, installed correctly, or
 measured the physical world accurately. Device compromise before signing is
 also outside this prototype's trust boundary.
+
+Schema-3 readings bind the device boot session, ESP8266 reset reason, and
+tamper-switch state to the same device signature as the temperature. Heartbeat
+delivery is operational metadata: the archive accepts it only after verifying
+the latest reading and matching its key to a previously published device.
 
 ## Next steps
 

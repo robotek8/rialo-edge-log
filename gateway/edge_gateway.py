@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -21,6 +22,8 @@ from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 
 SCHEMA_VERSION_UNSIGNED = 1
 SCHEMA_VERSION_SIGNED = 2
+SCHEMA_VERSION_SIGNED_STATUS = 3
+SIGNED_SCHEMA_VERSIONS = {SCHEMA_VERSION_SIGNED, SCHEMA_VERSION_SIGNED_STATUS}
 REGISTRY_SCHEMA_VERSION = 1
 SIGNATURE_ALGORITHM = "ecdsa-p256-sha256-raw"
 DEFAULT_BAUD_RATE = 115200
@@ -62,7 +65,7 @@ def parse_telemetry_line(line: str) -> dict[str, Any]:
     schema_version = value.get("schema_version")
     if isinstance(schema_version, bool) or schema_version not in {
         SCHEMA_VERSION_UNSIGNED,
-        SCHEMA_VERSION_SIGNED,
+        *SIGNED_SCHEMA_VERSIONS,
     }:
         raise TelemetryError(f"unsupported schema_version: {schema_version!r}")
 
@@ -74,7 +77,7 @@ def parse_telemetry_line(line: str) -> dict[str, Any]:
         "temperature_c",
         "simulated",
     }
-    if schema_version == SCHEMA_VERSION_SIGNED:
+    if schema_version in SIGNED_SCHEMA_VERSIONS:
         required.update(
             {
                 "message_type",
@@ -116,7 +119,7 @@ def parse_telemetry_line(line: str) -> dict[str, Any]:
         "simulated": simulated,
     }
 
-    if schema_version == SCHEMA_VERSION_SIGNED:
+    if schema_version in SIGNED_SCHEMA_VERSIONS:
         if value["message_type"] != "telemetry":
             raise TelemetryError("signed reading message_type must be telemetry")
 
@@ -146,6 +149,33 @@ def parse_telemetry_line(line: str) -> dict[str, Any]:
                 "temperature_milli_c": temperature_milli_c,
                 "signature_algorithm": SIGNATURE_ALGORITHM,
                 "signature": signature.lower(),
+            }
+        )
+
+    if schema_version == SCHEMA_VERSION_SIGNED_STATUS:
+        boot_id = value.get("boot_id")
+        if isinstance(boot_id, bool) or not isinstance(boot_id, int) or not 0 < boot_id <= 0xFFFFFFFF:
+            raise TelemetryError("boot_id must be a non-zero unsigned 32-bit integer")
+        reset_reason = value.get("reset_reason")
+        allowed_reset_reasons = {
+            "power_on",
+            "external_reset",
+            "software_reset",
+            "watchdog_reset",
+            "deep_sleep_wake",
+            "exception_reset",
+            "unknown",
+        }
+        if reset_reason not in allowed_reset_reasons:
+            raise TelemetryError("reset_reason is unsupported")
+        tamper_open = value.get("tamper_open")
+        if not isinstance(tamper_open, bool):
+            raise TelemetryError("tamper_open must be true or false")
+        normalized.update(
+            {
+                "boot_id": boot_id,
+                "reset_reason": reset_reason,
+                "tamper_open": tamper_open,
             }
         )
 
@@ -204,12 +234,20 @@ def parse_registration_line(line: str) -> dict[str, str | int]:
 
 
 def canonical_reading_payload(reading: dict[str, Any]) -> bytes:
-    if reading.get("schema_version") != SCHEMA_VERSION_SIGNED:
-        raise TelemetryError("only signed schema version 2 has a signature payload")
-    return (
-        f"2|{reading['device_id']}|{reading['sequence']}|{reading['uptime_ms']}|"
-        f"{reading['temperature_milli_c']}|{1 if reading['simulated'] else 0}"
-    ).encode("ascii")
+    schema_version = reading.get("schema_version")
+    if schema_version == SCHEMA_VERSION_SIGNED:
+        return (
+            f"2|{reading['device_id']}|{reading['sequence']}|{reading['uptime_ms']}|"
+            f"{reading['temperature_milli_c']}|{1 if reading['simulated'] else 0}"
+        ).encode("ascii")
+    if schema_version == SCHEMA_VERSION_SIGNED_STATUS:
+        return (
+            f"3|{reading['device_id']}|{reading['sequence']}|{reading['uptime_ms']}|"
+            f"{reading['temperature_milli_c']}|{1 if reading['simulated'] else 0}|"
+            f"{reading['boot_id']}|{reading['reset_reason']}|"
+            f"{1 if reading['tamper_open'] else 0}"
+        ).encode("ascii")
+    raise TelemetryError("reading schema does not define a signature payload")
 
 
 def verify_reading_signature(reading: dict[str, Any], public_key_hex: str) -> bool:
@@ -328,6 +366,9 @@ def create_batch(
     device_id = normalized[0]["device_id"]
     if any(reading["device_id"] != device_id for reading in normalized):
         raise TelemetryError("a batch cannot contain multiple device IDs")
+    reading_schema = normalized[0]["schema_version"]
+    if any(reading["schema_version"] != reading_schema for reading in normalized):
+        raise TelemetryError("a batch cannot mix telemetry schema versions")
 
     sequences = [reading["sequence"] for reading in normalized]
     if any(current <= previous for previous, current in zip(sequences, sequences[1:])):
@@ -338,7 +379,7 @@ def create_batch(
     batch_id = f"{device_id}-{sequences[0]}-{sequences[-1]}-{compact_timestamp}"
 
     batch: dict[str, Any] = {
-        "schema_version": SCHEMA_VERSION_SIGNED if public_key_hex else SCHEMA_VERSION_UNSIGNED,
+        "schema_version": reading_schema,
         "batch_id": batch_id,
         "device_id": device_id,
         "created_at_utc": isoformat_utc(timestamp),
@@ -351,7 +392,7 @@ def create_batch(
         batch["device_public_key_fingerprint"] = public_key_fingerprint(public_key_hex)
 
     batch["proof"] = {
-        "version": 2 if public_key_hex else 1,
+        "version": reading_schema,
         "algorithm": "sha256",
         "digest": calculate_proof(batch),
         "device_signatures_verified": bool(public_key_hex),
@@ -400,14 +441,11 @@ def verify_batch(
         if any(current <= previous for previous, current in zip(sequences, sequences[1:])):
             return False, "reading sequences do not increase"
 
-        signed = normalized[0]["schema_version"] == SCHEMA_VERSION_SIGNED
-        if any(
-            (reading["schema_version"] == SCHEMA_VERSION_SIGNED) != signed
-            for reading in normalized
-        ):
-            return False, "batch mixes signed and unsigned readings"
-        expected_batch_schema = SCHEMA_VERSION_SIGNED if signed else SCHEMA_VERSION_UNSIGNED
-        if batch.get("schema_version") != expected_batch_schema:
+        reading_schema = normalized[0]["schema_version"]
+        if any(reading["schema_version"] != reading_schema for reading in normalized):
+            return False, "batch mixes telemetry schema versions"
+        signed = reading_schema in SIGNED_SCHEMA_VERSIONS
+        if batch.get("schema_version") != reading_schema:
             return False, "batch schema version does not match its readings"
 
         if signed:
@@ -447,7 +485,7 @@ def verify_batch_file(path: Path, registry_path: Path | None = None) -> tuple[bo
         return False, "batch file must contain a JSON object"
 
     public_key_hex: str | None = None
-    if batch.get("schema_version") == SCHEMA_VERSION_SIGNED:
+    if batch.get("schema_version") in SIGNED_SCHEMA_VERSIONS:
         if registry_path is None:
             return False, "device registry path is required for a signed batch"
         try:
@@ -516,12 +554,40 @@ def decode_serial_line(raw: bytes) -> str | None:
         return None
 
 
+def save_device_heartbeat(
+    reading: dict[str, Any], public_key_hex: str, data_directory: Path
+) -> Path:
+    heartbeat_directory = data_directory / "heartbeats"
+    heartbeat_directory.mkdir(parents=True, exist_ok=True)
+    destination = heartbeat_directory / f"{reading['device_id']}.json"
+    temporary = destination.with_suffix(".json.tmp")
+    value = {
+        "message_type": "device_heartbeat",
+        "schema_version": 1,
+        "device_id": reading["device_id"],
+        "received_at_utc": isoformat_utc(utc_now()),
+        "device": {
+            "signature_algorithm": SIGNATURE_ALGORITHM,
+            "public_key_sec1": public_key_hex,
+            "fingerprint_sha256": public_key_fingerprint(public_key_hex),
+        },
+        "reading": reading,
+    }
+    temporary.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, destination)
+    return destination
+
+
 def listen_to_serial(
     port: str,
     baud_rate: int,
     batch_size: int,
     data_directory: Path,
     registry_path: Path,
+    heartbeat_seconds: float = 60.0,
 ) -> int:
     if batch_size < 1:
         raise ValueError("batch size must be at least one")
@@ -531,6 +597,8 @@ def listen_to_serial(
     buffer: list[dict[str, Any]] = []
     previous_sequence: int | None = None
     active_device: str | None = None
+    active_boot_id: int | None = None
+    next_heartbeat_at = 0.0
 
     print(f"Listening on {port} at {baud_rate} baud. Press Ctrl+C to stop.")
     print(f"A signed proof batch will be written every {batch_size} readings.")
@@ -592,11 +660,26 @@ def listen_to_serial(
                     print("[WARNING] Device changed; discarding the unfinished batch.")
                     buffer.clear()
                     previous_sequence = None
+                    active_boot_id = None
+                reading_boot_id = reading.get("boot_id")
+                if (
+                    active_boot_id is not None
+                    and reading_boot_id is not None
+                    and reading_boot_id != active_boot_id
+                ):
+                    print(
+                        f"[REBOOT] {reading['device_id']} boot={reading_boot_id:08x} "
+                        f"reason={reading.get('reset_reason', 'unknown')}"
+                    )
+                    buffer.clear()
+                    previous_sequence = None
                 if previous_sequence is not None and reading["sequence"] <= previous_sequence:
                     print("[WARNING] Sequence restarted; discarding the unfinished batch.")
                     buffer.clear()
 
                 active_device = reading["device_id"]
+                if reading_boot_id is not None:
+                    active_boot_id = reading_boot_id
                 previous_sequence = reading["sequence"]
                 buffer.append(reading)
                 print(
@@ -604,6 +687,14 @@ def listen_to_serial(
                     f"{reading['device_id']} seq={reading['sequence']} "
                     f"temperature={reading['temperature_c']:.3f} C"
                 )
+
+                now = time.monotonic()
+                if heartbeat_seconds > 0 and now >= next_heartbeat_at:
+                    heartbeat = save_device_heartbeat(
+                        reading, public_key_hex, data_directory
+                    )
+                    next_heartbeat_at = now + heartbeat_seconds
+                    print(f"[HEARTBEAT] {heartbeat}")
 
                 if len(buffer) >= batch_size:
                     batch = create_batch(buffer, public_key_hex=public_key_hex)
@@ -631,6 +722,12 @@ def build_parser() -> argparse.ArgumentParser:
     listen.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     listen.add_argument("--data-dir", type=Path, default=Path("data"))
     listen.add_argument("--registry", type=Path)
+    listen.add_argument(
+        "--heartbeat-seconds",
+        type=float,
+        default=60.0,
+        help="write the latest signed heartbeat at this interval; zero disables it",
+    )
 
     verify = subparsers.add_parser("verify", help="verify one saved batch")
     verify.add_argument("path", type=Path)
@@ -648,7 +745,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "listen":
             registry_path = args.registry or args.data_dir / "device_registry.json"
             return listen_to_serial(
-                args.port, args.baud, args.batch_size, args.data_dir, registry_path
+                args.port,
+                args.baud,
+                args.batch_size,
+                args.data_dir,
+                registry_path,
+                args.heartbeat_seconds,
             )
         if args.command == "verify":
             valid, message = verify_batch_file(args.path, args.registry)

@@ -109,6 +109,71 @@ def post_bundle(
     return result
 
 
+def load_heartbeat(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ArchivePublishError(f"cannot read heartbeat {path}: {exc}") from exc
+    if (
+        not isinstance(value, dict)
+        or value.get("message_type") != "device_heartbeat"
+        or not isinstance(value.get("device_id"), str)
+        or not isinstance(value.get("reading"), dict)
+    ):
+        raise ArchivePublishError(f"heartbeat has invalid contents: {path}")
+    return value
+
+
+def heartbeat_identity(value: dict[str, Any]) -> str:
+    reading = value.get("reading")
+    if not isinstance(reading, dict):
+        return ""
+    return ":".join(
+        str(reading.get(name, ""))
+        for name in ("boot_id", "sequence", "signature")
+    )
+
+
+def post_heartbeat(
+    archive_url: str,
+    ingest_token: str,
+    heartbeat: dict[str, Any],
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    if not ingest_token:
+        raise ArchivePublishError("ingest token is empty")
+    payload = json.dumps(
+        heartbeat, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        validate_archive_url(archive_url) + "/api/heartbeat",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {ingest_token}",
+            "Content-Type": "application/json",
+            "User-Agent": "rialo-edge-log-gateway/1",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            result = json.load(response)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            message = json.loads(body).get("error", body)
+        except json.JSONDecodeError:
+            message = body
+        raise ArchivePublishError(
+            f"archive rejected the heartbeat with HTTP {exc.code}: {message}"
+        ) from exc
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise ArchivePublishError(f"heartbeat request failed: {exc}") from exc
+    if not isinstance(result, dict) or result.get("status") != "HEARTBEAT_ACCEPTED":
+        raise ArchivePublishError("archive returned an unexpected heartbeat response")
+    return result
+
+
 def save_publication(
     directory: Path,
     batch_id: str,
@@ -186,6 +251,8 @@ def watch_batches(args: argparse.Namespace) -> int:
         list_publishable_batch_ids(args.data_dir, publication_directory)
     )
     known = set() if args.include_existing else existing
+    published_heartbeats: dict[Path, str] = {}
+    heartbeat_directory = args.heartbeat_dir or args.data_dir / "heartbeats"
     if known:
         print(f"Watching for new verified batches; {len(known)} existing batch(es) left private.")
     else:
@@ -212,6 +279,24 @@ def watch_batches(args: argparse.Namespace) -> int:
                 known.add(batch_id)
                 print(f"[{result['status']}] {batch_id}")
                 print(f"[RECEIPT] {receipt}")
+            if heartbeat_directory.exists():
+                for path in sorted(heartbeat_directory.glob("*.json")):
+                    try:
+                        heartbeat = load_heartbeat(path)
+                        identity = heartbeat_identity(heartbeat)
+                        if identity and published_heartbeats.get(path) == identity:
+                            continue
+                        result = post_heartbeat(
+                            args.archive_url, args.ingest_token, heartbeat
+                        )
+                    except ArchivePublishError as exc:
+                        print(f"[HEARTBEAT FAILED] {path}: {exc}", file=sys.stderr)
+                        continue
+                    published_heartbeats[path] = identity
+                    print(
+                        f"[HEARTBEAT] {result.get('device_id')} "
+                        f"seq={result.get('sequence')}"
+                    )
             if args.once:
                 return 0
             time.sleep(args.poll_seconds)
@@ -230,6 +315,11 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--ingest-token", default=os.environ.get(INGEST_TOKEN_ENV, "")
+    )
+    parser.add_argument(
+        "--heartbeat-dir",
+        type=Path,
+        help="directory containing latest signed device heartbeats",
     )
 
 

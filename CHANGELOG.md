@@ -6,6 +6,8 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 
 ### Added
 
+- Added signed boot IDs, reset reasons, and optional enclosure-tamper state to telemetry schema 3 while preserving schema-2 verification.
+- Added one-minute signed device heartbeats so the public portal reports live presence without waiting for the next anchored batch.
 - Added a live hero stream built from recent confirmed Rialo Devnet transactions. Each entry links to its transaction in RialoScan.
 - Added GitHub, X, and Telegram profile links to the public portal footer.
 - Added OpenGraph and X card metadata with a branded 1200×630 preview image.

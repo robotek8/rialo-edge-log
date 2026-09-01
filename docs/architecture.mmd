@@ -7,7 +7,7 @@ flowchart LR
 
     ESP -- "USB serial · JSON" --> GW
     GW -- "digest · Rialo CLI in WSL" --> RIALO
-    GW -- "confirmed proof · HTTPS" --> VPS
+    GW -- "confirmed proof + signed heartbeat · HTTPS" --> VPS
     VPS -- "telemetry + public proof" --> USER
     USER -. "transaction + workflow via public RPC" .-> RIALO
 
