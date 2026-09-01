@@ -295,7 +295,7 @@ def list_batch_files(batch_dir: Path) -> list[Path]:
 
 def watch_batches(args: argparse.Namespace) -> int:
     known = set() if args.include_existing else set(list_batch_files(args.batch_dir))
-    failed: set[Path] = set()
+    retry_after: dict[Path, float] = {}
     if known:
         print(f"Watching for new batches; {len(known)} existing file(s) left untouched.")
     else:
@@ -304,10 +304,17 @@ def watch_batches(args: argparse.Namespace) -> int:
     try:
         while True:
             current = list_batch_files(args.batch_dir)
-            pending = [path for path in current if path not in known and path not in failed]
+            now = time.monotonic()
+            pending = [
+                path
+                for path in current
+                if path not in known and now >= retry_after.get(path, 0.0)
+            ]
+            cycle_failed = False
             for path in pending:
                 if batch_receipt_exists(path, args.receipt_dir):
                     known.add(path)
+                    retry_after.pop(path, None)
                     print(f"[SKIP] {path}: Rialo receipt already exists")
                     continue
                 print(f"[FOUND] {path}")
@@ -322,15 +329,20 @@ def watch_batches(args: argparse.Namespace) -> int:
                         args.rpc_wait_seconds,
                     )
                 except (RialoAnchorError, RialoVerificationError) as exc:
-                    failed.add(path)
-                    print(f"[FAILED] {path}: {exc}", file=sys.stderr)
+                    cycle_failed = True
+                    retry_after[path] = time.monotonic() + args.retry_seconds
+                    print(
+                        f"[RETRY IN {args.retry_seconds:g}s] {path}: {exc}",
+                        file=sys.stderr,
+                    )
                     continue
                 known.add(path)
+                retry_after.pop(path, None)
                 print(f"[ANCHORED] {signature}")
                 print(f"[WORKFLOW] {workflow}")
                 print(f"[RECEIPT] {receipt}")
             if args.once:
-                return 1 if failed else 0
+                return 1 if cycle_failed else 0
             time.sleep(args.poll_seconds)
     except KeyboardInterrupt:
         print("\nStopped.")
@@ -362,6 +374,12 @@ def build_parser() -> argparse.ArgumentParser:
     watch = subparsers.add_parser("watch", help="anchor new batches as they appear")
     watch.add_argument("--batch-dir", type=Path, default=Path("data/batches"))
     watch.add_argument("--poll-seconds", type=float, default=2.0)
+    watch.add_argument(
+        "--retry-seconds",
+        type=float,
+        default=30.0,
+        help="wait before retrying a batch after a transient anchoring failure",
+    )
     watch.add_argument(
         "--include-existing",
         action="store_true",

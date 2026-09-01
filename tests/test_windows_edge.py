@@ -29,6 +29,13 @@ class WindowsEdgeDeploymentTests(unittest.TestCase):
         self.assertIn("-not (Test-Path $tokenPath)", installer)
         self.assertIn("Reusing the existing DPAPI-protected archive token", installer)
 
+    def test_background_workers_recover_unfinished_batches(self) -> None:
+        runner = (
+            ROOT / "deploy" / "windows-edge" / "Invoke-EdgeProcess.ps1"
+        ).read_text(encoding="utf-8")
+
+        self.assertEqual(runner.count('"--include-existing"'), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

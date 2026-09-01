@@ -13,6 +13,7 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 
 ### Fixed
 
+- Retried transient Rialo anchoring failures and recovered unprocessed verified batches after Windows worker restarts.
 - Changed the Windows edge tasks from interactive logon triggers to password-backed startup tasks, so telemetry starts before sign-in and continues while Windows is locked.
 - Unified public-facing terminology around “Verifiable Telemetry”; “Verified” now remains only for completed proof results.
 - Fixed browser verification for readings whose Celsius value is a whole degree, such as `5.0 °C`.
