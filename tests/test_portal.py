@@ -21,7 +21,7 @@ from gateway.edge_gateway import (
     save_registry,
 )
 from gateway.portal import PortalStore, handler_factory
-from gateway.rialo_args import build_arguments
+from gateway.rialo_args import build_arguments, build_registration_arguments
 
 
 def signed_reading(
@@ -78,6 +78,8 @@ class PortalTests(unittest.TestCase):
         self.program_id = "PROGRAM123"
         self.workflow = "WORKFLOW456"
         self.transaction = "TRANSACTION789"
+        self.registration_workflow = "REGISTRATIONWORKFLOW"
+        self.registration_transaction = "REGISTRATIONTRANSACTION"
         argument_values = [value for _, value in build_arguments(self.batch)]
         raw_state = struct.pack("<13Q", 1, *argument_values)
         self.account = {
@@ -88,6 +90,36 @@ class PortalTests(unittest.TestCase):
             "transaction": {
                 "message": {
                     "accountKeys": ["PAYER", self.workflow, self.program_id],
+                    "instructions": [{"programIdIndex": 2, "accounts": [0, 1]}],
+                }
+            },
+            "meta": {"err": None},
+        }
+        registration_values = [
+            value
+            for _, value in build_registration_arguments(
+                self.batch["device_id"],
+                self.batch["device_public_key_fingerprint"],
+            )
+        ]
+        registration_raw_state = struct.pack(
+            "<13Q", 1, *registration_values, *([0] * 7)
+        )
+        self.registration_account = {
+            "owner": self.program_id,
+            "data": [
+                base64.b64encode(registration_raw_state).decode("ascii"),
+                "base64",
+            ],
+        }
+        self.registration_transaction_result = {
+            "transaction": {
+                "message": {
+                    "accountKeys": [
+                        "PAYER",
+                        self.registration_workflow,
+                        self.program_id,
+                    ],
                     "instructions": [{"programIdIndex": 2, "accounts": [0, 1]}],
                 }
             },
@@ -110,22 +142,51 @@ class PortalTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+        registration_dir = self.data_dir / "registrations"
+        registration_dir.mkdir()
+        (registration_dir / f"{self.batch['device_id']}-rialo-registration.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "status": "RIALO_DEVICE_REGISTERED",
+                    "device_id": self.batch["device_id"],
+                    "public_key_fingerprint": self.batch[
+                        "device_public_key_fingerprint"
+                    ],
+                    "program_id": self.program_id,
+                    "transaction_signature": self.registration_transaction,
+                    "workflow_address": self.registration_workflow,
+                    "workflow_slug": "device-e0473",
+                    "registrar": "PAYER",
+                }
+            ),
+            encoding="utf-8",
+        )
+
         transaction_result = self.transaction_result
         account = self.account
+        registration_transaction_result = self.registration_transaction_result
+        registration_account = self.registration_account
 
         class FakeClient:
             def get_transaction(self, signature: str) -> dict:
-                if signature != "TRANSACTION789":
-                    raise AssertionError("unexpected transaction")
-                return transaction_result
+                if signature == "TRANSACTION789":
+                    return transaction_result
+                if signature == "REGISTRATIONTRANSACTION":
+                    return registration_transaction_result
+                raise AssertionError("unexpected transaction")
 
             def get_account_info(self, address: str) -> dict:
-                if address != "WORKFLOW456":
-                    raise AssertionError("unexpected workflow")
-                return account
+                if address == "WORKFLOW456":
+                    return account
+                if address == "REGISTRATIONWORKFLOW":
+                    return registration_account
+                raise AssertionError("unexpected workflow")
 
         self.store = PortalStore(
-            self.data_dir, client_factory=lambda _url: FakeClient()
+            self.data_dir,
+            client_factory=lambda _url: FakeClient(),
+            expected_device_registrar="PAYER",
         )
 
     def tearDown(self) -> None:
@@ -142,6 +203,10 @@ class PortalTests(unittest.TestCase):
         detail = self.store.get_batch(self.batch["batch_id"])
         bundle = detail["proof_bundle"]
         self.assertEqual(bundle["bundle_type"], "rialo-edge-log-proof")
+        self.assertEqual(bundle["schema_version"], 2)
+        self.assertEqual(
+            bundle["device_registration"]["status"], "RIALO_DEVICE_REGISTERED"
+        )
         self.assertEqual(bundle["batch"]["proof"]["digest"], self.batch["proof"]["digest"])
         self.assertEqual(bundle["device"]["public_key_sec1"], self.public_key)
 
@@ -150,6 +215,7 @@ class PortalTests(unittest.TestCase):
         result = self.store.verify_bundle(bundle)
         self.assertEqual(result["status"], "RIALO_VERIFIED")
         self.assertTrue(result["rialo_verified"])
+        self.assertTrue(result["device_registration_verified"])
         self.assertEqual(bundle["device"]["public_key_sec1"], self.public_key)
 
     def test_changed_exported_bundle_is_detected(self) -> None:

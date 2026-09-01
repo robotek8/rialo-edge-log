@@ -19,10 +19,13 @@ ESP8266 -> Windows gateway -> signed batch -> Rialo Devnet
 
 1. The ESP8266 signs every JSON reading with its own ECDSA P-256 key.
 2. The local gateway verifies the signature and builds a deterministic batch.
-3. A SHA-256 digest of that batch is stored in a Rialo Venus workflow.
-4. The confirmed batch and its public proof are sent to the archive.
-5. A visitor can recalculate the digest, verify the device signatures, and read
-   the historical workflow state from Rialo in the browser.
+3. The project registrar records the device ID and public-key fingerprint once
+   in a dedicated Rialo workflow.
+4. A SHA-256 digest of each batch is stored in a separate Rialo Venus workflow.
+5. The confirmed batch, registration receipt and public proof are sent to the
+   archive.
+6. A visitor can recalculate the digest, verify the device signatures and
+   independently read both workflow records from Rialo in the browser.
 
 Private keys, wallet files, and ingestion credentials never leave the edge
 computer. Raw telemetry is stored off-chain.
@@ -51,9 +54,10 @@ DS18B20 will be connected in the next hardware revision.
 - Docker deployment for the archive and hidden Windows background tasks
 - signed boot-session, reset-reason, and enclosure-tamper telemetry fields
 - one-minute signed heartbeats for live device presence on the public portal
+- one-time on-chain registration of the device ID and public-key fingerprint
 
 The deployed Venus program ID is
-`AfbPSJCLnmAAxhG66QoSV1Pp3WbTY6VNx55SZoKBnB7x`.
+`GVJpRi8SVURsjKbLC84Azk24vV2cK3ib74aXRk5hdatF`.
 
 An early confirmed example covers device `edge-0E0473`, sequences `73-84`:
 
@@ -76,8 +80,10 @@ start with [`gateway/README.md`](gateway/README.md).
 ## What the proof does and does not prove
 
 The proof shows that a published batch matches the readings signed by the
-registered device and the digest recorded on Rialo. If an archived value is
-edited later, verification fails.
+on-chain registered device key and the digest recorded on Rialo. The browser
+also checks that the registration transaction was signed by the project's
+published registrar wallet. If an archived value is edited later, verification
+fails.
 
 It does not prove that the sensor was calibrated, installed correctly, or
 measured the physical world accurately. Device compromise before signing is
@@ -100,6 +106,8 @@ the latest reading and matching its key to a previously published device.
 
 This repository is for development and Devnet use. Do not commit Wi-Fi
 passwords, private keys, wallet files, ingestion tokens, or generated telemetry.
+Rialo Devnet can reset without notice. Receipts from an earlier network state
+remain useful as local history but cannot prove current on-chain availability.
 
 This is an independent open-source experiment on Rialo Devnet. It is not
 affiliated with or endorsed by Rialo Labs or Subzero Labs and is not official

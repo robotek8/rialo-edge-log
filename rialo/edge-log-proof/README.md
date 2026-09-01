@@ -1,7 +1,9 @@
 # Rialo Edge Log Proof Workflow
 
-This Venus workflow stores one proof record for one signed telemetry batch. It
-uses `u64` parameters and has been built and deployed with Rialo 0.18.1.
+This Venus program exposes two workflow functions. `register` stores a one-time
+device-ID and public-key-fingerprint binding; `start` stores one proof record for
+one signed telemetry batch. It uses `u64` parameters and has been built and
+deployed with Rialo 0.18.1.
 
 Each workflow instance records:
 
@@ -13,6 +15,10 @@ Each workflow instance records:
 
 Both 32-byte hashes are passed as four little-endian `u64` values. The original
 public key and telemetry remain off-chain.
+
+The registration transaction's fee payer is the public registrar identity. The
+archive and browser require it to match the registrar address published by the
+project; a self-asserted registration from another wallet is rejected.
 
 ## Build in WSL
 

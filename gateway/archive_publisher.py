@@ -214,6 +214,8 @@ def publish_batch_id(
         raise ArchivePublishError(str(exc)) from exc
     if bundle.get("rialo_receipt") is None:
         raise ArchivePublishError("batch has no Rialo receipt")
+    if bundle.get("device_registration") is None:
+        raise ArchivePublishError("device has no verified on-chain registration receipt")
     result = post_bundle(archive_url, ingest_token, bundle)
     receipt = save_publication(
         publication_directory, batch_id, archive_url, result

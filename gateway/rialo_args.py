@@ -58,6 +58,48 @@ def build_arguments(batch: dict[str, Any]) -> list[tuple[str, int]]:
     return arguments
 
 
+def registration_workflow_slug(device_id: str) -> str:
+    return f"device-{device_id_to_u64(device_id):x}"
+
+
+def build_registration_arguments(
+    device_id: str, public_key_fingerprint: str
+) -> list[tuple[str, int]]:
+    arguments: list[tuple[str, int]] = [
+        ("device_id", device_id_to_u64(device_id)),
+    ]
+    arguments.extend(
+        (f"public_key_fingerprint_{index}", value)
+        for index, value in enumerate(
+            hex_digest_to_u64_words(public_key_fingerprint)
+        )
+    )
+    return arguments
+
+
+def build_registration_command(
+    device_id: str, public_key_fingerprint: str, program_id: str
+) -> str:
+    parts = [
+        "rialo",
+        "client",
+        "program",
+        "invoke",
+        "--program-dir",
+        "rialo/edge-log-proof",
+        "--function",
+        "register",
+        "--arg",
+        f"workflow_pda_slug={registration_workflow_slug(device_id)}",
+    ]
+    for name, value in build_registration_arguments(
+        device_id, public_key_fingerprint
+    ):
+        parts.extend(["--arg", f"{name}={value}"])
+    parts.append(program_id)
+    return " ".join(parts)
+
+
 def build_command(batch: dict[str, Any], program_id: str) -> str:
     parts = [
         "rialo",
@@ -105,4 +147,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

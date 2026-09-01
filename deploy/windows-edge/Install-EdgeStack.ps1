@@ -3,7 +3,7 @@
 [CmdletBinding()]
 param(
     [string]$ComPort = "COM10",
-    [string]$ProgramId = "AfbPSJCLnmAAxhG66QoSV1Pp3WbTY6VNx55SZoKBnB7x",
+    [string]$ProgramId = "GVJpRi8SVURsjKbLC84Azk24vV2cK3ib74aXRk5hdatF",
     [string]$ArchiveUrl = "https://rialo-edge-log.xyz",
     [string]$WslProjectDir = "~/rialo-edge-log",
     [switch]$RefreshArchiveToken

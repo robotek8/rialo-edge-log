@@ -23,12 +23,14 @@ from gateway.edge_gateway import (
     verify_batch_file,
 )
 from gateway.rialo_verify import (
+    DEFAULT_DEVICE_REGISTRAR,
     DEFAULT_RPC_URL,
     RialoRpcClient,
     RialoVerificationError,
     compare_batch_to_state,
     decode_account_state,
     extract_workflow_address,
+    verify_registration_receipt,
 )
 
 
@@ -96,13 +98,16 @@ class PortalStore:
         registry_path: Path | None = None,
         rpc_url: str = DEFAULT_RPC_URL,
         client_factory: Callable[[str], RialoRpcClient] | None = None,
+        expected_device_registrar: str = DEFAULT_DEVICE_REGISTRAR,
     ) -> None:
         self.data_directory = data_directory
         self.batch_directory = data_directory / "batches"
         self.receipt_directory = data_directory / "receipts"
+        self.registration_directory = data_directory / "registrations"
         self.registry_path = registry_path or data_directory / "device_registry.json"
         self.rpc_url = rpc_url
         self.client_factory = client_factory or (lambda url: RialoRpcClient(url))
+        self.expected_device_registrar = expected_device_registrar
 
     def _batch_paths(self) -> dict[str, Path]:
         paths: dict[str, Path] = {}
@@ -136,6 +141,15 @@ class PortalStore:
         receipt = read_json_object(path)
         if receipt.get("batch_id") != batch_id:
             raise PortalError("receipt belongs to another batch")
+        return receipt
+
+    def _load_registration(self, device_id: str) -> dict[str, Any] | None:
+        path = self.registration_directory / f"{device_id}-rialo-registration.json"
+        if not path.is_file():
+            return None
+        receipt = read_json_object(path)
+        if receipt.get("device_id") != device_id:
+            raise PortalError("device registration belongs to another device")
         return receipt
 
     def _summary(
@@ -264,8 +278,9 @@ class PortalStore:
     def export_bundle(self, batch_id: str) -> dict[str, Any]:
         batch = read_json_object(self._batch_path(batch_id))
         public_key = self._public_key(batch)
-        return {
-            "schema_version": 1,
+        registration = self._load_registration(str(batch.get("device_id")))
+        bundle = {
+            "schema_version": 2 if registration is not None else 1,
             "bundle_type": "rialo-edge-log-proof",
             "exported_at_utc": datetime.now(timezone.utc)
             .isoformat(timespec="milliseconds")
@@ -281,6 +296,9 @@ class PortalStore:
             },
             "rialo_receipt": self._load_receipt(batch_id),
         }
+        if registration is not None:
+            bundle["device_registration"] = registration
+        return bundle
 
     def _public_key(self, batch: dict[str, Any]) -> str | None:
         if batch.get("schema_version") not in SIGNED_SCHEMA_VERSIONS:
@@ -316,8 +334,7 @@ class PortalStore:
                 "rialo_verified": False,
             }
 
-        batch = read_json_object(path)
-        return self._verify_against_rialo(batch, receipt)
+        return self.verify_bundle(self.export_bundle(batch_id))
 
     def _verify_against_rialo(
         self, batch: dict[str, Any], receipt: dict[str, Any]
@@ -384,7 +401,7 @@ class PortalStore:
 
     def verify_bundle(self, bundle: dict[str, Any]) -> dict[str, Any]:
         if (
-            bundle.get("schema_version") != 1
+            bundle.get("schema_version") not in {1, 2}
             or bundle.get("bundle_type") != "rialo-edge-log-proof"
             or not isinstance(bundle.get("batch"), dict)
             or not isinstance(bundle.get("device"), dict)
@@ -434,7 +451,62 @@ class PortalStore:
                 "local_verified": True,
                 "rialo_verified": False,
             }
-        return self._verify_against_rialo(batch, receipt)
+        result = self._verify_against_rialo(batch, receipt)
+        if result.get("status") != "RIALO_VERIFIED":
+            return result
+        if bundle.get("schema_version") == 1:
+            result["device_registration_verified"] = False
+            return result
+
+        registration = bundle.get("device_registration")
+        if not isinstance(registration, dict):
+            return {
+                "status": "INVALID_RECEIPT",
+                "message": "The proof file has no on-chain device registration.",
+                "local_verified": True,
+                "rialo_verified": False,
+                "device_registration_verified": False,
+            }
+        fingerprint = batch.get("device_public_key_fingerprint")
+        if not isinstance(fingerprint, str):
+            return {
+                "status": "TAMPERED",
+                "message": "The device fingerprint is missing.",
+                "local_verified": True,
+                "rialo_verified": False,
+                "device_registration_verified": False,
+            }
+        try:
+            verified_registration = verify_registration_receipt(
+                str(batch.get("device_id")),
+                fingerprint,
+                registration,
+                self.client_factory(self.rpc_url),
+                expected_program_id=receipt.get("program_id"),
+                expected_registrar=self.expected_device_registrar,
+            )
+        except RialoVerificationError as exc:
+            return {
+                "status": "CHAIN_UNAVAILABLE",
+                "message": f"Batch proof matches, but device registration could not be checked: {exc}",
+                "local_verified": True,
+                "rialo_verified": False,
+                "device_registration_verified": False,
+            }
+        result.update(
+            {
+                "message": "Device registration, signatures, batch proof and historical Rialo workflow all match.",
+                "device_registration_verified": True,
+                "registration_transaction_signature": verified_registration[
+                    "transaction_signature"
+                ],
+                "registration_workflow_address": verified_registration[
+                    "workflow_address"
+                ],
+                "registration_registrar": verified_registration["registrar"],
+            }
+        )
+        return result
 
     def simulate_tampering(self, batch_id: str) -> dict[str, Any]:
         batch = read_json_object(self._batch_path(batch_id))

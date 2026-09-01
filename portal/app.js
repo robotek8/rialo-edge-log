@@ -136,6 +136,7 @@ const translations = {
     browserDigest: "SHA-256 пересчитан из опубликованных показаний",
     browserTransaction: "транзакция найдена в Rialo Devnet",
     browserWorkflow: "workflow содержит тот же digest",
+    browserRegistration: "публичный ключ устройства зарегистрирован в Rialo",
     archiveRecheck: "сервер архива повторно подтвердил proof",
     blockLabel: "Блок",
     recordedAtLabel: "записано",
@@ -280,6 +281,7 @@ const translations = {
     browserDigest: "SHA-256 recalculated from the published readings",
     browserTransaction: "transaction found on Rialo Devnet",
     browserWorkflow: "workflow contains the same digest",
+    browserRegistration: "device public key is registered on Rialo",
     archiveRecheck: "archive server independently rechecked the proof",
     blockLabel: "Block",
     recordedAtLabel: "recorded",
@@ -623,6 +625,7 @@ function setProofFileResult(result) {
   if (good) {
     checks.push(`${result.signaturesVerified} ${t("browserSignatures")}`);
     checks.push(t("browserDigest"), t("browserTransaction"), t("browserWorkflow"));
+    if (result.deviceRegistrationVerified) checks.push(t("browserRegistration"));
   } else if (result.message) {
     checks.push(`${t("failureReason")}: ${result.message}`);
   }
@@ -1119,6 +1122,7 @@ async function verifySelected() {
       t("browserTransaction"),
       t("browserWorkflow"),
     ];
+    if (browser.deviceRegistrationVerified) checks.push(t("browserRegistration"));
     if (serverVerified) checks.push(t("archiveRecheck"));
     setResult({ ...browser, checks });
     return;

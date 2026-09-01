@@ -6,10 +6,10 @@ flowchart LR
     USER["Visitor's browser<br/>independent verification"]
 
     ESP -- "USB serial · JSON" --> GW
-    GW -- "digest · Rialo CLI in WSL" --> RIALO
-    GW -- "confirmed proof + signed heartbeat · HTTPS" --> VPS
+    GW -- "device registration + digest · Rialo CLI in WSL" --> RIALO
+    GW -- "registration + confirmed proof + heartbeat · HTTPS" --> VPS
     VPS -- "telemetry + public proof" --> USER
-    USER -. "transaction + workflow via public RPC" .-> RIALO
+    USER -. "registration + proof workflows via public RPC" .-> RIALO
 
     classDef edge fill:#202b32,stroke:#ff7919,color:#eeeae1,stroke-width:2px
     classDef chain fill:#202b32,stroke:#70e6c4,color:#eeeae1,stroke-width:2px
