@@ -208,17 +208,24 @@
     return BigInt(`0x${deviceId.slice(5)}`);
   }
 
-  function registrationWorkflowSlug(deviceId) {
-    return `device-${deviceIdToU64(deviceId).toString(16)}`;
+  async function registrationWorkflowSlug(deviceId) {
+    const canonicalDeviceId = deviceIdToU64(deviceId)
+      .toString(16)
+      .padStart(16, "0");
+    return sha256Hex(
+      TEXT_ENCODER.encode(
+        `rialo-edge-log/device-registration/${canonicalDeviceId}`,
+      ),
+    );
   }
 
-  function verifyRegistrationIdentity(registration, batch, receipt, expectedRegistrar) {
+  async function verifyRegistrationIdentity(registration, batch, receipt, expectedRegistrar) {
     assert(registration && registration.schema_version === 1, "Device registration receipt is missing", "INVALID_RECEIPT");
     assert(registration.status === "RIALO_DEVICE_REGISTERED", "Device registration status is invalid", "INVALID_RECEIPT");
     assert(registration.device_id === batch.device_id, "Device registration belongs to another device", "INVALID_RECEIPT");
     assert(registration.public_key_fingerprint === batch.device_public_key_fingerprint, "Device registration contains another public key", "INVALID_RECEIPT");
     assert(registration.program_id === receipt.program_id, "Device registration uses another program", "INVALID_RECEIPT");
-    assert(registration.workflow_slug === registrationWorkflowSlug(batch.device_id), "Device registration workflow slug is invalid", "INVALID_RECEIPT");
+    assert(registration.workflow_slug === await registrationWorkflowSlug(batch.device_id), "Device registration workflow slug is invalid", "INVALID_RECEIPT");
     assert(registration.registrar === expectedRegistrar, "Device registration signer is not trusted", "INVALID_RECEIPT");
     for (const field of ["transaction_signature", "workflow_address", "registrar"]) {
       assert(typeof registration[field] === "string" && registration[field], `Device registration ${field} is missing`, "INVALID_RECEIPT");
@@ -300,7 +307,7 @@
       ? bundle.device_registration
       : null;
     if (bundle.schema_version === 2) {
-      verifyRegistrationIdentity(
+      await verifyRegistrationIdentity(
         registration,
         batch,
         receipt,

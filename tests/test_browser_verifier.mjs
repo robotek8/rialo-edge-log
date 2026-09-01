@@ -123,7 +123,7 @@ async function fixture(schemaVersion = 2, withRegistration = false) {
       program_id: programId,
       transaction_signature: registrationTransaction,
       workflow_address: registrationWorkflow,
-      workflow_slug: "device-e0473",
+      workflow_slug: "97373925aaebf809b453f42fc1feebe466ff35d42e94e35d4df32419af286f90",
       registrar: "PAYER",
     };
   }

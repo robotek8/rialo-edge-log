@@ -18,6 +18,7 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 
 ### Fixed
 
+- Encoded the deterministic device-registration workflow slug as hexadecimal, as required by the Rialo CLI.
 - Preserved stale pending submissions under `network-history/` and retried them automatically when a Devnet reset requires a new program deployment.
 - Refreshed devices, selected history, Rialo transactions, and network status automatically every 30 seconds without reloading the portal.
 - Retried transient Rialo anchoring failures and recovered unprocessed verified batches after Windows worker restarts.
