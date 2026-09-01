@@ -10,12 +10,13 @@ import mimetypes
 import os
 import sqlite3
 import sys
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Iterator, Sequence
 from urllib.parse import unquote, urlparse
 
 from gateway.edge_gateway import (
@@ -91,8 +92,17 @@ class ArchiveStore:
         connection.execute("PRAGMA journal_mode = WAL")
         return connection
 
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
     def _initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS devices (
@@ -212,7 +222,7 @@ class ArchiveStore:
         )
         ingested_at = utc_now_text()
 
-        with self._connect() as connection:
+        with self._connection() as connection:
             existing_device = connection.execute(
                 "SELECT public_key_sec1, public_key_fingerprint FROM devices WHERE device_id = ?",
                 (fields["device_id"],),
@@ -324,7 +334,7 @@ class ArchiveStore:
             raise ArchiveError("heartbeat signature is invalid")
 
         received_at = utc_now_text()
-        with self._connect() as connection:
+        with self._connection() as connection:
             existing = connection.execute(
                 "SELECT public_key_sec1, public_key_fingerprint FROM devices WHERE device_id = ?",
                 (device_id,),
@@ -404,7 +414,7 @@ class ArchiveStore:
         }
 
     def list_devices(self) -> list[dict[str, Any]]:
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(
                 """
                 SELECT d.*, b.bundle_json, b.last_sequence, b.created_at_utc AS latest_batch_utc
@@ -456,12 +466,12 @@ class ArchiveStore:
             query += " WHERE device_id = ?"
             parameters = (device_id,)
         query += " ORDER BY created_at_utc DESC, batch_id DESC"
-        with self._connect() as connection:
+        with self._connection() as connection:
             rows = connection.execute(query, parameters).fetchall()
         return [self._batch_summary(row) for row in rows]
 
     def get_batch(self, batch_id: str) -> dict[str, Any]:
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT * FROM batches WHERE batch_id = ?", (batch_id,)
             ).fetchone()
@@ -490,7 +500,7 @@ class ArchiveStore:
         return summary
 
     def verify(self, batch_id: str) -> dict[str, Any]:
-        with self._connect() as connection:
+        with self._connection() as connection:
             row = connection.execute(
                 "SELECT bundle_json FROM batches WHERE batch_id = ?", (batch_id,)
             ).fetchone()
@@ -524,7 +534,7 @@ class ArchiveStore:
         cutoff = (
             datetime.now(timezone.utc) - timedelta(hours=24)
         ).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-        with self._connect() as connection:
+        with self._connection() as connection:
             latest = connection.execute(
                 """
                 SELECT transaction_signature FROM batches
