@@ -16,7 +16,7 @@ from typing import Any, Callable, Sequence
 from urllib.parse import unquote, urlparse
 
 from gateway.edge_gateway import (
-    SCHEMA_VERSION_SIGNED,
+    SIGNED_SCHEMA_VERSIONS,
     TelemetryError,
     load_registry,
     verify_batch,
@@ -142,6 +142,19 @@ class PortalStore:
         self, batch: dict[str, Any], receipt: dict[str, Any] | None
     ) -> dict[str, Any]:
         readings = batch.get("readings")
+        normalized_readings = [
+            reading for reading in readings or [] if isinstance(reading, dict)
+        ] if isinstance(readings, list) else []
+        boot_ids = [
+            reading.get("boot_id")
+            for reading in normalized_readings
+            if reading.get("boot_id") is not None
+        ]
+        tamper_states = [
+            reading.get("tamper_open")
+            for reading in normalized_readings
+            if isinstance(reading.get("tamper_open"), bool)
+        ]
         return {
             "batch_id": batch.get("batch_id"),
             "device_id": batch.get("device_id"),
@@ -163,6 +176,12 @@ class PortalStore:
                     for reading in readings
                 )
             ),
+            "boot_id": boot_ids[-1] if boot_ids else None,
+            "reset_reason": (
+                normalized_readings[0].get("reset_reason")
+                if normalized_readings else None
+            ),
+            "tamper_open": any(tamper_states) if tamper_states else None,
             "status": "ANCHORED" if receipt else "LOCAL_ONLY",
             "transaction_signature": (
                 receipt.get("transaction_signature") if receipt else None
@@ -227,6 +246,9 @@ class PortalStore:
                 "sequence": reading.get("sequence"),
                 "temperature_c": reading.get("temperature_c"),
                 "uptime_ms": reading.get("uptime_ms"),
+                "boot_id": reading.get("boot_id"),
+                "reset_reason": reading.get("reset_reason"),
+                "tamper_open": reading.get("tamper_open"),
                 "simulated": reading.get("simulated"),
             }
             for reading in batch.get("readings", [])
@@ -261,7 +283,7 @@ class PortalStore:
         }
 
     def _public_key(self, batch: dict[str, Any]) -> str | None:
-        if batch.get("schema_version") != SCHEMA_VERSION_SIGNED:
+        if batch.get("schema_version") not in SIGNED_SCHEMA_VERSIONS:
             return None
         try:
             registry = load_registry(self.registry_path)
@@ -379,7 +401,7 @@ class PortalStore:
                 "rialo_verified": False,
             }
         public_key = device.get("public_key_sec1")
-        if batch.get("schema_version") == SCHEMA_VERSION_SIGNED and not isinstance(
+        if batch.get("schema_version") in SIGNED_SCHEMA_VERSIONS and not isinstance(
             public_key, str
         ):
             return {

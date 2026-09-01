@@ -17,7 +17,7 @@ function u64(view, offset, value) {
   view.setBigUint64(offset, BigInt(value), true);
 }
 
-async function fixture() {
+async function fixture(schemaVersion = 2) {
   const keys = await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
     true,
@@ -27,7 +27,7 @@ async function fixture() {
   const fingerprint = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", publicKey)));
   const reading = {
     message_type: "telemetry",
-    schema_version: 2,
+    schema_version: schemaVersion,
     device_id: "edge-0E0473",
     sequence: 10,
     uptime_ms: 50000,
@@ -36,7 +36,18 @@ async function fixture() {
     simulated: true,
     signature_algorithm: "ecdsa-p256-sha256-raw",
   };
-  const message = new TextEncoder().encode("2|edge-0E0473|10|50000|4210|1");
+  if (schemaVersion === 3) {
+    Object.assign(reading, {
+      boot_id: 0xABCDEF01,
+      reset_reason: "watchdog_reset",
+      tamper_open: false,
+    });
+  }
+  const message = new TextEncoder().encode(
+    schemaVersion === 3
+      ? "3|edge-0E0473|10|50000|4210|1|2882400001|watchdog_reset|0"
+      : "2|edge-0E0473|10|50000|4210|1",
+  );
   reading.signature = hex(new Uint8Array(await crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-256" },
     keys.privateKey,
@@ -44,7 +55,7 @@ async function fixture() {
   )));
 
   const batch = {
-    schema_version: 2,
+    schema_version: schemaVersion,
     batch_id: "edge-0E0473-10-10-test",
     device_id: "edge-0E0473",
     created_at_utc: "2026-08-30T12:00:00.000Z",
@@ -54,7 +65,7 @@ async function fixture() {
     readings: [reading],
     device_public_key_fingerprint: fingerprint,
     proof: {
-      version: 2,
+      version: schemaVersion,
       algorithm: "sha256",
       digest: "",
       device_signatures_verified: true,
@@ -126,6 +137,17 @@ test("browser independently verifies signatures, digest, transaction and workflo
   assert.equal(result.localDigest, result.onchainDigest);
   assert.equal(result.blockHeight, 123);
   assert.equal(result.feeKelvin, 5000);
+});
+
+test("browser verifies signed boot and tamper state", async () => {
+  const { bundle, rpcCall } = await fixture(3);
+  const result = await verifier.verifyProofBundle(bundle, { rpcCall });
+  assert.equal(result.status, "RIALO_VERIFIED");
+  bundle.batch.readings[0].tamper_open = true;
+  await assert.rejects(
+    verifier.verifyProofBundle(bundle, { rpcCall }),
+    (error) => error.code === "TAMPERED",
+  );
 });
 
 test("browser digest matches Python for a whole-degree temperature", async () => {

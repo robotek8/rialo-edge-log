@@ -9,12 +9,14 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
 
-from archive.server import ArchiveStore, handler_factory
-from gateway.archive_publisher import publish_batch_id
+from archive.server import ArchiveError, ArchiveStore, handler_factory
+from gateway.archive_publisher import post_heartbeat, publish_batch_id
 from gateway.edge_gateway import (
+    canonical_reading_payload,
     create_batch,
     empty_registry,
     enroll_registration,
@@ -23,6 +25,7 @@ from gateway.edge_gateway import (
 )
 from gateway.portal import PortalStore
 from gateway.rialo_args import build_arguments
+from tests.test_gateway import signed_status_reading
 from tests.test_portal import signed_reading
 
 
@@ -31,20 +34,20 @@ class ArchiveTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.data_dir = self.root / "gateway-data"
-        private_key = ec.generate_private_key(ec.SECP256R1())
-        public_key = private_key.public_key().public_bytes(
+        self.private_key = ec.generate_private_key(ec.SECP256R1())
+        self.public_key = self.private_key.public_key().public_bytes(
             serialization.Encoding.X962,
             serialization.PublicFormat.UncompressedPoint,
         ).hex()
         self.batch = create_batch(
-            [signed_reading(private_key, number) for number in range(10, 13)],
-            public_key_hex=public_key,
+            [signed_reading(self.private_key, number) for number in range(10, 13)],
+            public_key_hex=self.public_key,
         )
         save_batch(self.batch, self.data_dir)
         registry = empty_registry()
         enrolled, _ = enroll_registration(
             registry,
-            {"device_id": self.batch["device_id"], "public_key_sec1": public_key},
+            {"device_id": self.batch["device_id"], "public_key_sec1": self.public_key},
         )
         self.assertTrue(enrolled)
         save_registry(registry, self.data_dir / "device_registry.json")
@@ -150,6 +153,54 @@ class ArchiveTests(unittest.TestCase):
         self.assertEqual(bundle["batch"]["proof"]["digest"], self.batch["proof"]["digest"])
         self.assertEqual(bundle["device"]["public_key_sec1"], self.bundle["device"]["public_key_sec1"])
 
+    def heartbeat(self, sequence: int = 99, tamper_open: bool = False) -> dict:
+        reading = signed_status_reading(
+            self.private_key,
+            sequence,
+            boot_id=0xABCDEF01,
+            reset_reason="watchdog_reset",
+            tamper_open=tamper_open,
+        )
+        reading["device_id"] = self.batch["device_id"]
+        # Re-sign after changing the fixture device ID.
+        der = self.private_key.sign(
+            canonical_reading_payload(reading), ec.ECDSA(hashes.SHA256())
+        )
+        r_value, s_value = decode_dss_signature(der)
+        reading["signature"] = (
+            r_value.to_bytes(32, "big") + s_value.to_bytes(32, "big")
+        ).hex()
+        return {
+            "message_type": "device_heartbeat",
+            "schema_version": 1,
+            "device_id": self.batch["device_id"],
+            "received_at_utc": "2026-09-01T12:00:00.000Z",
+            "device": {
+                "signature_algorithm": "ecdsa-p256-sha256-raw",
+                "public_key_sec1": self.public_key,
+                "fingerprint_sha256": self.batch["device_public_key_fingerprint"],
+            },
+            "reading": reading,
+        }
+
+    def test_signed_heartbeat_updates_live_device_state(self) -> None:
+        self.archive.ingest(self.bundle)
+        result = self.archive.ingest_heartbeat(self.heartbeat(tamper_open=True))
+        self.assertEqual(result["status"], "HEARTBEAT_ACCEPTED")
+        device = self.archive.list_devices()[0]
+        self.assertEqual(device["last_sequence"], 99)
+        self.assertEqual(device["boot_id"], 0xABCDEF01)
+        self.assertEqual(device["reset_reason"], "watchdog_reset")
+        self.assertTrue(device["tamper_open"])
+        self.assertIsNotNone(device["heartbeat_at_utc"])
+
+    def test_heartbeat_rejects_changed_signed_state(self) -> None:
+        self.archive.ingest(self.bundle)
+        heartbeat = self.heartbeat(tamper_open=False)
+        heartbeat["reading"]["tamper_open"] = True
+        with self.assertRaisesRegex(ArchiveError, "signature is invalid"):
+            self.archive.ingest_heartbeat(heartbeat)
+
     def test_http_ingest_requires_token_and_publisher_can_upload(self) -> None:
         static_directory = Path(__file__).resolve().parent.parent / "portal"
         server = ThreadingHTTPServer(
@@ -179,6 +230,13 @@ class ArchiveTests(unittest.TestCase):
             )
             self.assertEqual(result["status"], "PUBLISHED")
             self.assertTrue(publication.is_file())
+
+            heartbeat_result = post_heartbeat(
+                archive_url,
+                "correct-token",
+                self.heartbeat(sequence=100),
+            )
+            self.assertEqual(heartbeat_result["status"], "HEARTBEAT_ACCEPTED")
 
             with urllib.request.urlopen(archive_url + "/api/devices", timeout=2) as response:
                 devices = json.load(response)

@@ -60,7 +60,7 @@
   <path d="M615 267H663" fill="none" stroke="#70e6c4" stroke-width="2.5" marker-end="url(#arrow-green)"/>
   <text x="639" y="246" text-anchor="middle" class="label">digest</text>
   <path d="M615 326C735 415 820 415 945 326" fill="none" stroke="#ff7919" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
-  <text x="780" y="409" text-anchor="middle" class="label">confirmed proof · HTTPS</text>
+  <text x="780" y="409" text-anchor="middle" class="label">proof + signed heartbeat · HTTPS</text>
 
   <!-- browser verification -->
   <g filter="url(#shadow)">

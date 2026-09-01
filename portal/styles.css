@@ -284,6 +284,11 @@ td.mono { font-family: var(--mono); }
 .status.local-only::before, .status.local-verified::before { background: var(--warning); }
 .status.tampered, .status.invalid-receipt { color: var(--danger); }
 .status.tampered::before, .status.invalid-receipt::before { background: var(--danger); }
+.status.tamper-alert { color: var(--danger); }
+.status.tamper-alert::before { background: var(--danger); box-shadow: 0 0 10px rgba(255,93,93,.45); }
+.status.reboot-event { color: var(--warning); }
+.status.reboot-event::before { background: var(--warning); }
+.batch-statuses { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .device-presence.online { color: var(--verified); }
 .device-presence.online::before { background: var(--verified); box-shadow: 0 0 10px rgba(112,230,196,.55); }
 .device-presence.stale { color: var(--warning); }
@@ -316,7 +321,7 @@ td.mono { font-family: var(--mono); }
   background-color: var(--panel-raised);
   transform: translateY(-2px);
 }
-.device-card-head { display: flex; justify-content: space-between; }
+.device-card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .device-card > strong { margin-top: 13px; font: 700 18px var(--mono); }
 .device-card > b { color: var(--verified); font: 600 38px/1.1 var(--mono); }
 .device-card-meta { color: var(--muted); font-size: 12px; }

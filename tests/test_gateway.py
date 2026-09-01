@@ -26,6 +26,7 @@ from gateway.edge_gateway import (
     parse_telemetry_line,
     public_key_fingerprint,
     save_batch,
+    save_device_heartbeat,
     save_registry,
     verify_batch,
     verify_batch_file,
@@ -93,6 +94,39 @@ def signed_reading(private_key: ec.EllipticCurvePrivateKey, sequence: int) -> di
     return value
 
 
+def signed_status_reading(
+    private_key: ec.EllipticCurvePrivateKey,
+    sequence: int,
+    *,
+    boot_id: int = 0x1234ABCD,
+    reset_reason: str = "power_on",
+    tamper_open: bool = False,
+) -> dict:
+    value = {
+        "message_type": "telemetry",
+        "schema_version": 3,
+        "device_id": "edge-A1B2C3",
+        "sequence": sequence,
+        "uptime_ms": sequence * 5000,
+        "temperature_milli_c": 4200 + sequence,
+        "temperature_c": (4200 + sequence) / 1000.0,
+        "simulated": True,
+        "boot_id": boot_id,
+        "reset_reason": reset_reason,
+        "tamper_open": tamper_open,
+        "signature_algorithm": "ecdsa-p256-sha256-raw",
+        "signature": "0" * 128,
+    }
+    der_signature = private_key.sign(
+        canonical_reading_payload(value), ec.ECDSA(hashes.SHA256())
+    )
+    r_value, s_value = decode_dss_signature(der_signature)
+    value["signature"] = (
+        r_value.to_bytes(32, "big") + s_value.to_bytes(32, "big")
+    ).hex()
+    return value
+
+
 def public_key_hex(private_key: ec.EllipticCurvePrivateKey) -> str:
     return private_key.public_key().public_bytes(
         serialization.Encoding.X962,
@@ -136,6 +170,23 @@ class TelemetryParsingTests(unittest.TestCase):
         self.assertEqual(result["schema_version"], 2)
         self.assertEqual(len(result["signature"]), 128)
 
+    def test_parses_signed_boot_and_tamper_state(self) -> None:
+        private_key = ec.generate_private_key(ec.SECP256R1())
+        result = parse_telemetry_line(
+            json.dumps(
+                signed_status_reading(
+                    private_key,
+                    1,
+                    reset_reason="watchdog_reset",
+                    tamper_open=True,
+                )
+            )
+        )
+        self.assertEqual(result["schema_version"], 3)
+        self.assertEqual(result["boot_id"], 0x1234ABCD)
+        self.assertEqual(result["reset_reason"], "watchdog_reset")
+        self.assertTrue(result["tamper_open"])
+
 
 class DeviceSignatureTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -150,6 +201,31 @@ class DeviceSignatureTests(unittest.TestCase):
         self.value["temperature_milli_c"] += 1000
         self.value["temperature_c"] += 1.0
         self.assertFalse(verify_reading_signature(self.value, self.public_key))
+
+    def test_changed_tamper_state_is_rejected_by_signature(self) -> None:
+        value = signed_status_reading(self.private_key, 1, tamper_open=False)
+        value["tamper_open"] = True
+        self.assertFalse(verify_reading_signature(value, self.public_key))
+
+    def test_status_batch_remains_verifiable(self) -> None:
+        values = [
+            signed_status_reading(self.private_key, number)
+            for number in range(1, 4)
+        ]
+        batch = create_batch(values, public_key_hex=self.public_key)
+        valid, _ = verify_batch(batch, self.public_key)
+        self.assertTrue(valid)
+        self.assertEqual(batch["schema_version"], 3)
+        self.assertEqual(batch["proof"]["version"], 3)
+
+    def test_latest_signed_reading_is_saved_as_heartbeat(self) -> None:
+        value = signed_status_reading(self.private_key, 7, tamper_open=True)
+        with tempfile.TemporaryDirectory() as directory:
+            path = save_device_heartbeat(value, self.public_key, Path(directory))
+            heartbeat = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(heartbeat["message_type"], "device_heartbeat")
+        self.assertEqual(heartbeat["reading"]["sequence"], 7)
+        self.assertTrue(heartbeat["reading"]["tamper_open"])
 
     def test_public_key_is_bound_to_signed_batch(self) -> None:
         values = [signed_reading(self.private_key, number) for number in range(1, 4)]

@@ -33,6 +33,20 @@ const translations = {
     deviceStale: "STALE",
     deviceOffline: "OFFLINE",
     justNow: "только что",
+    tamperAlert: "ВСКРЫТИЕ",
+    rebootEvent: "ПЕРЕЗАПУСК",
+    bootLabel: "Сеанс загрузки",
+    resetReasonLabel: "Причина перезапуска",
+    tamperLabel: "Корпус",
+    tamperClosed: "закрыт",
+    tamperOpened: "вскрыт",
+    resetPowerOn: "подача питания",
+    resetExternal: "внешний сброс",
+    resetSoftware: "программный сброс",
+    resetWatchdog: "watchdog-сброс",
+    resetDeepSleep: "выход из сна",
+    resetException: "сбой прошивки",
+    resetUnknown: "неизвестно",
     back: "← Все устройства",
     historyEyebrow: "ИСТОРИЯ УСТРОЙСТВА",
     historyTitle: "История устройства",
@@ -163,6 +177,20 @@ const translations = {
     deviceStale: "STALE",
     deviceOffline: "OFFLINE",
     justNow: "just now",
+    tamperAlert: "TAMPER",
+    rebootEvent: "REBOOT",
+    bootLabel: "Boot session",
+    resetReasonLabel: "Reset reason",
+    tamperLabel: "Enclosure",
+    tamperClosed: "closed",
+    tamperOpened: "opened",
+    resetPowerOn: "power on",
+    resetExternal: "external reset",
+    resetSoftware: "software reset",
+    resetWatchdog: "watchdog reset",
+    resetDeepSleep: "deep-sleep wake",
+    resetException: "firmware exception",
+    resetUnknown: "unknown",
     back: "← All devices",
     historyEyebrow: "DEVICE HISTORY",
     historyTitle: "Device history",
@@ -374,12 +402,34 @@ function formatRelativeTime(value) {
   return formatter.format(-Math.floor(elapsedSeconds / 86400), "day");
 }
 
-function devicePresence(value) {
+function devicePresence(value, heartbeatAvailable = false) {
   const timestamp = Date.parse(value || "");
   const elapsedMs = Number.isFinite(timestamp) ? Math.max(0, Date.now() - timestamp) : Infinity;
-  if (elapsedMs <= 10 * 60 * 1000) return { className: "online", label: t("deviceOnline") };
-  if (elapsedMs <= 30 * 60 * 1000) return { className: "stale", label: t("deviceStale") };
+  const onlineLimit = heartbeatAvailable ? 2 * 60 * 1000 : 10 * 60 * 1000;
+  const staleLimit = heartbeatAvailable ? 10 * 60 * 1000 : 30 * 60 * 1000;
+  if (elapsedMs <= onlineLimit) return { className: "online", label: t("deviceOnline") };
+  if (elapsedMs <= staleLimit) return { className: "stale", label: t("deviceStale") };
   return { className: "offline", label: t("deviceOffline") };
+}
+
+function formatBootId(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0
+    ? number.toString(16).padStart(8, "0").toUpperCase()
+    : "—";
+}
+
+function resetReasonText(value) {
+  const keys = {
+    power_on: "resetPowerOn",
+    external_reset: "resetExternal",
+    software_reset: "resetSoftware",
+    watchdog_reset: "resetWatchdog",
+    deep_sleep_wake: "resetDeepSleep",
+    exception_reset: "resetException",
+    unknown: "resetUnknown",
+  };
+  return t(keys[value] || "resetUnknown");
 }
 
 function renderNetworkStatus() {
@@ -633,18 +683,25 @@ function deviceCard(device) {
   button.type = "button";
   const header = document.createElement("span");
   header.className = "device-card-head";
-  const presence = devicePresence(device.latest_batch_utc);
+  const latestSeen = device.latest_seen_utc || device.latest_batch_utc;
+  const presence = devicePresence(latestSeen, Boolean(device.heartbeat_at_utc));
   const presenceLabel = document.createElement("span");
   presenceLabel.className = `status device-presence ${presence.className}`;
-  presenceLabel.textContent = `${presence.label} · ${formatRelativeTime(device.latest_batch_utc)}`;
+  presenceLabel.textContent = `${presence.label} · ${formatRelativeTime(latestSeen)}`;
   header.append(presenceLabel);
+  if (device.tamper_open === true) {
+    const tamper = document.createElement("span");
+    tamper.className = "status tamper-alert";
+    tamper.textContent = t("tamperAlert");
+    header.append(tamper);
+  }
   const id = document.createElement("strong");
   id.textContent = device.device_id;
   const temperature = document.createElement("b");
   temperature.textContent = formatTemperature(device.latest_temperature_c);
   const meta = document.createElement("span");
   meta.className = "device-card-meta";
-  meta.textContent = `${batchCountLabel(device.batch_count)} · seq ${device.last_sequence} · ${formatDate(device.latest_batch_utc)}`;
+  meta.textContent = `${batchCountLabel(device.batch_count)} · seq ${device.last_sequence} · ${formatDate(latestSeen)}`;
   const fingerprint = document.createElement("code");
   fingerprint.textContent = `key ${short(device.public_key_fingerprint, 10)}`;
   button.append(header, id, temperature, meta, fingerprint);
@@ -724,15 +781,32 @@ function renderBatches() {
   state.batchPage = Math.min(Math.max(state.batchPage, 1), pageCount);
   const pageStart = (state.batchPage - 1) * state.batchPageSize;
   const visibleBatches = state.batches.slice(pageStart, pageStart + state.batchPageSize);
-  for (const batch of visibleBatches) {
+  visibleBatches.forEach((batch, visibleIndex) => {
     const inspect = document.createElement("button");
     inspect.className = "row-button";
     inspect.type = "button";
     inspect.textContent = t("view");
     inspect.addEventListener("click", () => showBatch(batch.batch_id));
     const row = document.createElement("tr");
+    const status = document.createElement("span");
+    status.className = "batch-statuses";
+    status.append(statusNode());
+    const batchIndex = pageStart + visibleIndex;
+    const olderBatch = state.batches[batchIndex + 1];
+    if (batch.boot_id != null && (!olderBatch || olderBatch.boot_id !== batch.boot_id)) {
+      const reboot = document.createElement("span");
+      reboot.className = "status reboot-event";
+      reboot.textContent = t("rebootEvent");
+      status.append(reboot);
+    }
+    if (batch.tamper_open === true) {
+      const tamper = document.createElement("span");
+      tamper.className = "status tamper-alert";
+      tamper.textContent = t("tamperAlert");
+      status.append(tamper);
+    }
     row.append(
-      tableCell(t("tableStatus"), statusNode()),
+      tableCell(t("tableStatus"), status),
       tableCell(t("tableTime"), formatDate(batch.created_at_utc)),
       tableCell(t("tableRange"), `${batch.first_sequence}–${batch.last_sequence}`, "mono"),
       tableCell(t("tableReadings"), String(batch.reading_count), "mono"),
@@ -740,7 +814,7 @@ function renderBatches() {
       tableCell("", inspect),
     );
     elements.rows.append(row);
-  }
+  });
   elements.pagination.hidden = pageCount <= 1;
   elements.previousPage.disabled = state.batchPage <= 1;
   elements.nextPage.disabled = state.batchPage >= pageCount;
@@ -997,6 +1071,14 @@ async function showBatch(batchId, updateUrl = true, scrollToDetail = true) {
     fact("Workflow", short(batch.workflow_address, 12), batch.workflow_address),
     fact(t("factReadings"), String(batch.reading_count)),
     fact(t("factSource"), batch.simulated ? t("sourceSimulated") : t("sourcePhysical")),
+    fact(t("bootLabel"), formatBootId(batch.boot_id)),
+    fact(t("resetReasonLabel"), batch.reset_reason ? resetReasonText(batch.reset_reason) : "—"),
+    fact(
+      t("tamperLabel"),
+      batch.tamper_open == null
+        ? "—"
+        : batch.tamper_open ? t("tamperOpened") : t("tamperClosed"),
+    ),
   );
   renderChart(batch.readings || []);
   resetChainEvidence(batch);

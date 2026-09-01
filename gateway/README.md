@@ -29,6 +29,12 @@ local trust-on-first-use registry. With the simulator's five-second interval, a
 60-reading batch is saved once every five minutes under `data/batches/`. Use
 `--batch-size 12` only for a short one-minute demonstration.
 
+The gateway also writes the latest verified reading to `data/heartbeats/` once
+per minute. The publisher forwards that small signed heartbeat to the archive,
+so public ONLINE/STALE/OFFLINE status no longer waits for the next five-minute
+batch. Set `--heartbeat-seconds 0` only when heartbeat publication must be
+disabled.
+
 ## Verify a Batch
 
 ```powershell
@@ -168,6 +174,11 @@ python -m gateway.archive_publisher watch
 only when the operator intentionally wants to make the old telemetry public.
 Successful publications are recorded under `data/publications/` and are not
 committed to Git.
+
+While `watch` is running, it also retries changed heartbeat files from
+`data/heartbeats/`. The archive verifies the reading signature and enrolled
+device key before updating live presence, temperature, boot ID, reset reason,
+or tamper state.
 
 An archive visitor opens the device link, selects a period and receives one of
 these results:
