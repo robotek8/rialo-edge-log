@@ -14,6 +14,10 @@ the computer at the sign-in screen does not stop telemetry. Sleep and hibernatio
 still pause all three workers. Output and error logs are written under
 `%LOCALAPPDATA%\RialoEdgeLog\logs`.
 
+The anchor retries temporary Rialo/RPC failures. After a reboot or worker restart,
+the anchor and publisher also recover verified batches that were not completed by
+an earlier run.
+
 The archive token is stored using Windows DPAPI. It can only be decrypted by
 the same Windows account on the same computer. It is never written into the
 repository, task command line or log files.

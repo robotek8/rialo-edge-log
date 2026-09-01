@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -36,6 +38,7 @@ from gateway.rialo_args import (
     hex_digest_to_u64_words,
 )
 from gateway.rialo_anchor import (
+    RialoAnchorError,
     batch_receipt_exists,
     build_wsl_invocation,
     extract_transaction_signature,
@@ -43,6 +46,7 @@ from gateway.rialo_anchor import (
     receipt_path,
     save_pending_submission,
     submit_batch,
+    watch_batches,
 )
 from gateway.rialo_verify import (
     RialoRpcClient,
@@ -351,6 +355,46 @@ class RialoHistoricalVerificationTests(unittest.TestCase):
 
 
 class RialoAnchoringTests(unittest.TestCase):
+    def test_watcher_retries_transient_anchor_failure(self) -> None:
+        batch_path = Path("data/batches/edge-A1B2C3/batch.json")
+        args = SimpleNamespace(
+            include_existing=True,
+            batch_dir=Path("data/batches"),
+            receipt_dir=Path("data/receipts"),
+            registry=Path("data/device_registry.json"),
+            program_id="PROGRAM123",
+            rpc_url="http://example.invalid",
+            wsl_project_dir="~/rialo-edge-log",
+            rpc_wait_seconds=1.0,
+            poll_seconds=0.0,
+            retry_seconds=0.0,
+            once=False,
+        )
+        success = (Path("receipt.json"), "signature", "workflow", "")
+
+        with (
+            patch(
+                "gateway.rialo_anchor.list_batch_files",
+                return_value=[batch_path],
+            ),
+            patch(
+                "gateway.rialo_anchor.batch_receipt_exists",
+                return_value=False,
+            ),
+            patch(
+                "gateway.rialo_anchor.submit_batch",
+                side_effect=[RialoAnchorError("temporary RPC error"), success],
+            ) as submit,
+            patch(
+                "gateway.rialo_anchor.time.sleep",
+                side_effect=[None, KeyboardInterrupt],
+            ),
+        ):
+            result = watch_batches(args)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(submit.call_count, 2)
+
     def setUp(self) -> None:
         self.private_key = ec.generate_private_key(ec.SECP256R1())
         self.public_key = public_key_hex(self.private_key)

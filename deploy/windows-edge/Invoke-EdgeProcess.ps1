@@ -27,6 +27,7 @@ switch ($Role) {
     "anchor" {
         $pythonArguments = @(
             "-m", "gateway.rialo_anchor", "watch",
+            "--include-existing",
             "--program-id", [string]$config.programId,
             "--wsl-project-dir", [string]$config.wslProjectDirectory
         )
@@ -38,6 +39,7 @@ switch ($Role) {
         $env:RIALO_EDGE_LOG_ARCHIVE_URL = [string]$config.archiveUrl
         $pythonArguments = @(
             "-m", "gateway.archive_publisher", "watch",
+            "--include-existing",
             "--publication-dir", [string]$config.publicationDirectory
         )
     }
