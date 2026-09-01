@@ -18,6 +18,10 @@ The anchor retries temporary Rialo/RPC failures. After a reboot or worker restar
 the anchor and publisher also recover verified batches that were not completed by
 an earlier run.
 
+When Devnet is reset and the Venus program receives a new Program ID, the anchor
+preserves pending files from the old deployment under `network-history/` and
+submits the affected batches again instead of entering a permanent retry loop.
+
 The archive token is stored using Windows DPAPI. It can only be decrypted by
 the same Windows account on the same computer. It is never written into the
 repository, task command line or log files.

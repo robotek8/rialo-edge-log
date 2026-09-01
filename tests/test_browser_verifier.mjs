@@ -17,7 +17,7 @@ function u64(view, offset, value) {
   view.setBigUint64(offset, BigInt(value), true);
 }
 
-async function fixture(schemaVersion = 2) {
+async function fixture(schemaVersion = 2, withRegistration = false) {
   const keys = await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
     true,
@@ -77,6 +77,8 @@ async function fixture(schemaVersion = 2) {
   const programId = "PROGRAM123";
   const workflow = "WORKFLOW456";
   const transaction = "TRANSACTION789";
+  const registrationWorkflow = "REGISTRATIONWORKFLOW";
+  const registrationTransaction = "REGISTRATIONTRANSACTION";
   const raw = new Uint8Array(104);
   const view = new DataView(raw.buffer);
   u64(view, 0, 1);
@@ -87,8 +89,14 @@ async function fixture(schemaVersion = 2) {
   u64(view, 88, 10);
   u64(view, 96, 1);
 
+  const registrationRaw = new Uint8Array(104);
+  const registrationView = new DataView(registrationRaw.buffer);
+  u64(registrationView, 0, 1);
+  u64(registrationView, 8, 0x0e0473);
+  registrationRaw.set(fromHex(fingerprint), 16);
+
   const bundle = {
-    schema_version: 1,
+    schema_version: withRegistration ? 2 : 1,
     bundle_type: "rialo-edge-log-proof",
     batch,
     device: {
@@ -106,23 +114,46 @@ async function fixture(schemaVersion = 2) {
       workflow_address: workflow,
     },
   };
-  const rpcCall = async (method) => {
+  if (withRegistration) {
+    bundle.device_registration = {
+      schema_version: 1,
+      status: "RIALO_DEVICE_REGISTERED",
+      device_id: batch.device_id,
+      public_key_fingerprint: fingerprint,
+      program_id: programId,
+      transaction_signature: registrationTransaction,
+      workflow_address: registrationWorkflow,
+      workflow_slug: "device-e0473",
+      registrar: "PAYER",
+    };
+  }
+  const rpcCall = async (method, params) => {
     if (method === "getTransaction") {
+      const signature = params[0].signature;
+      const requestedWorkflow = signature === registrationTransaction
+        ? registrationWorkflow
+        : workflow;
       return {
         block_height: 123,
         transaction: {
           message: {
-            accountKeys: ["PAYER", workflow, programId],
+            accountKeys: ["PAYER", requestedWorkflow, programId],
             instructions: [{ programIdIndex: 2, accounts: [0, 1] }],
           },
         },
         meta: { err: null, fee: 5000 },
       };
     }
+    const requestedAddress = params[0].address;
     return {
       value: {
         owner: programId,
-        data: [Buffer.from(raw).toString("base64"), "base64"],
+        data: [
+          Buffer.from(
+            requestedAddress === registrationWorkflow ? registrationRaw : raw,
+          ).toString("base64"),
+          "base64",
+        ],
       },
     };
   };
@@ -131,12 +162,46 @@ async function fixture(schemaVersion = 2) {
 
 test("browser independently verifies signatures, digest, transaction and workflow", async () => {
   const { bundle, rpcCall } = await fixture();
-  const result = await verifier.verifyProofBundle(bundle, { rpcCall });
+  const result = await verifier.verifyProofBundle(bundle, {
+    rpcCall,
+    expectedRegistrar: "PAYER",
+  });
   assert.equal(result.status, "RIALO_VERIFIED");
   assert.equal(result.signaturesVerified, 1);
   assert.equal(result.localDigest, result.onchainDigest);
   assert.equal(result.blockHeight, 123);
   assert.equal(result.feeKelvin, 5000);
+});
+
+test("browser independently verifies the on-chain device registration", async () => {
+  const { bundle, rpcCall } = await fixture(3, true);
+  const result = await verifier.verifyProofBundle(bundle, {
+    rpcCall,
+    expectedRegistrar: "PAYER",
+  });
+  assert.equal(result.status, "RIALO_VERIFIED");
+  assert.equal(result.deviceRegistrationVerified, true);
+  assert.equal(result.registrationRegistrar, "PAYER");
+});
+
+test("browser rejects an untrusted device registrar", async () => {
+  const { bundle, rpcCall } = await fixture(3, true);
+  await assert.rejects(
+    verifier.verifyProofBundle(bundle, {
+      rpcCall,
+      expectedRegistrar: "ANOTHERPAYER",
+    }),
+    (error) => error.code === "INVALID_RECEIPT",
+  );
+});
+
+test("browser rejects a registration for another public key", async () => {
+  const { bundle, rpcCall } = await fixture(3, true);
+  bundle.device_registration.public_key_fingerprint = "ff".repeat(32);
+  await assert.rejects(
+    verifier.verifyProofBundle(bundle, { rpcCall, expectedRegistrar: "PAYER" }),
+    (error) => error.code === "INVALID_RECEIPT",
+  );
 });
 
 test("browser verifies signed boot and tamper state", async () => {

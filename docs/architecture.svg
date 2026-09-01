@@ -25,7 +25,7 @@
   <rect width="1200" height="690" rx="18" fill="url(#grid)"/>
   <text x="60" y="62" class="tag" fill="#ff7919">RIALO EDGE LOG</text>
   <text x="60" y="104" class="sans" font-size="31" font-weight="800" fill="#eeeae1">System architecture</text>
-  <text x="60" y="132" class="copy">Signed telemetry stays off-chain; its digest is anchored on Rialo Devnet.</text>
+  <text x="60" y="132" class="copy">Signed telemetry stays off-chain; the device key and each batch digest are anchored on Rialo Devnet.</text>
 
   <!-- main data path -->
   <g filter="url(#shadow)">
@@ -46,7 +46,7 @@
     <text x="697" y="235" class="tag" fill="#70e6c4">03 · BLOCKCHAIN</text>
     <text x="697" y="276" class="name">Rialo Devnet</text>
     <text x="697" y="306" class="copy">Venus workflow state</text>
-    <text x="697" y="334" class="small">digest · range · device ID</text>
+    <text x="697" y="334" class="small">device key · digest · range</text>
 
     <rect class="box public" x="945" y="205" width="195" height="165" rx="10"/>
     <text x="967" y="235" class="tag" fill="#8aa6b5">04 · PUBLIC VPS</text>
@@ -58,16 +58,16 @@
   <path d="M295 287H343" fill="none" stroke="#ff7919" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
   <text x="319" y="268" text-anchor="middle" class="label">USB serial</text>
   <path d="M615 267H663" fill="none" stroke="#70e6c4" stroke-width="2.5" marker-end="url(#arrow-green)"/>
-  <text x="639" y="246" text-anchor="middle" class="label">digest</text>
+  <text x="639" y="246" text-anchor="middle" class="label">register + digest</text>
   <path d="M615 326C735 415 820 415 945 326" fill="none" stroke="#ff7919" stroke-width="2.5" marker-end="url(#arrow-orange)"/>
-  <text x="780" y="409" text-anchor="middle" class="label">proof + signed heartbeat · HTTPS</text>
+  <text x="780" y="409" text-anchor="middle" class="label">registration + proof + heartbeat · HTTPS</text>
 
   <!-- browser verification -->
   <g filter="url(#shadow)">
     <rect class="box public" x="355" y="475" width="530" height="140" rx="10"/>
     <text x="380" y="507" class="tag" fill="#8aa6b5">05 · VISITOR'S BROWSER</text>
     <text x="380" y="548" class="name">Independent verification</text>
-    <text x="380" y="578" class="copy">Checks device signatures and SHA-256, then reads the workflow via public RPC.</text>
+    <text x="380" y="578" class="copy">Checks signatures and SHA-256, then reads registration and proof workflows via public RPC.</text>
   </g>
   <path d="M1042 370C1042 453 923 512 897 523" fill="none" stroke="#7693a3" stroke-width="2.2" marker-end="url(#arrow-green)"/>
   <text x="1006" y="447" text-anchor="middle" class="label">telemetry + proof</text>

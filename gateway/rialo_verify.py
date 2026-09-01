@@ -16,10 +16,11 @@ from pathlib import Path
 from typing import Any
 
 from gateway.edge_gateway import verify_batch_file
-from gateway.rialo_args import device_id_to_u64
+from gateway.rialo_args import device_id_to_u64, registration_workflow_slug
 
 
 DEFAULT_RPC_URL = "http://devnet.rialo.io:4100"
+DEFAULT_DEVICE_REGISTRAR = "BBjJpGwN3aV3BrMPw6BCZHZue8btcqTTfXouG9Nv9Sz6"
 WORKFLOW_STATE_SIZE = 104
 KELVINS_PER_RLO = 1_000_000_000
 
@@ -196,6 +197,85 @@ def compare_batch_to_state(
         for name, expected_value in expected.items()
         if state.get(name) != expected_value
     ]
+
+
+def compare_registration_to_state(
+    device_id: str,
+    public_key_fingerprint: str,
+    state: dict[str, Any],
+) -> list[str]:
+    expected = {
+        "device_id": device_id_to_u64(device_id),
+        "device_public_key_fingerprint": public_key_fingerprint.lower(),
+        "batch_digest": "00" * 32,
+        "first_sequence": 0,
+        "last_sequence": 0,
+        "reading_count": 0,
+    }
+    return [
+        name
+        for name, expected_value in expected.items()
+        if state.get(name) != expected_value
+    ]
+
+
+def verify_registration_receipt(
+    device_id: str,
+    public_key_fingerprint: str,
+    receipt: dict[str, Any],
+    client: RialoRpcClient,
+    expected_program_id: str | None = None,
+    expected_registrar: str | None = None,
+) -> dict[str, Any]:
+    if (
+        receipt.get("schema_version") != 1
+        or receipt.get("status") != "RIALO_DEVICE_REGISTERED"
+        or receipt.get("device_id") != device_id
+        or receipt.get("public_key_fingerprint") != public_key_fingerprint
+    ):
+        raise RialoVerificationError("device registration receipt is invalid")
+    required = (
+        "program_id",
+        "transaction_signature",
+        "workflow_address",
+        "workflow_slug",
+        "registrar",
+    )
+    if any(not isinstance(receipt.get(name), str) or not receipt[name] for name in required):
+        raise RialoVerificationError("device registration receipt is incomplete")
+    if expected_program_id is not None and receipt["program_id"] != expected_program_id:
+        raise RialoVerificationError("device registration uses another program")
+    if receipt["workflow_slug"] != registration_workflow_slug(device_id):
+        raise RialoVerificationError("device registration workflow slug is invalid")
+
+    transaction = client.get_transaction(receipt["transaction_signature"])
+    workflow = extract_workflow_address(transaction, receipt["program_id"])
+    if workflow != receipt["workflow_address"]:
+        raise RialoVerificationError(
+            "device registration transaction points to another workflow"
+        )
+    registrar = extract_fee_payer(transaction)
+    if registrar != receipt["registrar"]:
+        raise RialoVerificationError("device registration signer does not match")
+    if expected_registrar is not None and registrar != expected_registrar:
+        raise RialoVerificationError("device registration signer is not trusted")
+    state = decode_account_state(
+        client.get_account_info(workflow), receipt["program_id"]
+    )
+    mismatches = compare_registration_to_state(
+        device_id, public_key_fingerprint, state
+    )
+    if mismatches:
+        raise RialoVerificationError(
+            "device registration state differs: " + ", ".join(mismatches)
+        )
+    return {
+        "program_id": receipt["program_id"],
+        "transaction_signature": receipt["transaction_signature"],
+        "workflow_address": workflow,
+        "workflow_slug": receipt["workflow_slug"],
+        "registrar": registrar,
+    }
 
 
 def save_receipt(

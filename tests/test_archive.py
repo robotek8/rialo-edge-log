@@ -24,7 +24,7 @@ from gateway.edge_gateway import (
     save_registry,
 )
 from gateway.portal import PortalStore
-from gateway.rialo_args import build_arguments
+from gateway.rialo_args import build_arguments, build_registration_arguments
 from tests.test_gateway import signed_status_reading
 from tests.test_portal import signed_reading
 
@@ -55,6 +55,8 @@ class ArchiveTests(unittest.TestCase):
         self.program_id = "PROGRAM123"
         self.workflow = "WORKFLOW456"
         self.transaction = "TRANSACTION789"
+        self.registration_workflow = "REGISTRATIONWORKFLOW"
+        self.registration_transaction = "REGISTRATIONTRANSACTION"
         argument_values = [value for _, value in build_arguments(self.batch)]
         raw_state = struct.pack("<13Q", 1, *argument_values)
         account = {
@@ -70,15 +72,51 @@ class ArchiveTests(unittest.TestCase):
             },
             "meta": {"err": None, "fee": 5000},
         }
+        registration_values = [
+            value
+            for _, value in build_registration_arguments(
+                self.batch["device_id"],
+                self.batch["device_public_key_fingerprint"],
+            )
+        ]
+        registration_raw_state = struct.pack(
+            "<13Q", 1, *registration_values, *([0] * 7)
+        )
+        registration_account = {
+            "owner": self.program_id,
+            "data": [
+                base64.b64encode(registration_raw_state).decode("ascii"),
+                "base64",
+            ],
+        }
+        registration_transaction_result = {
+            "transaction": {
+                "message": {
+                    "accountKeys": [
+                        "PAYER",
+                        self.registration_workflow,
+                        self.program_id,
+                    ],
+                    "instructions": [{"programIdIndex": 2, "accounts": [0, 1]}],
+                }
+            },
+            "meta": {"err": None, "fee": 5000},
+        }
 
         class FakeClient:
             def get_transaction(inner_self, signature: str) -> dict:
-                self.assertEqual(signature, self.transaction)
-                return transaction_result
+                if signature == self.transaction:
+                    return transaction_result
+                if signature == self.registration_transaction:
+                    return registration_transaction_result
+                raise AssertionError("unexpected transaction")
 
             def get_account_info(inner_self, address: str) -> dict:
-                self.assertEqual(address, self.workflow)
-                return account
+                if address == self.workflow:
+                    return account
+                if address == self.registration_workflow:
+                    return registration_account
+                raise AssertionError("unexpected workflow")
 
             def get_balance(inner_self, address: str) -> int:
                 self.assertEqual(address, "PAYER")
@@ -100,9 +138,31 @@ class ArchiveTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        registration_dir = self.data_dir / "registrations"
+        registration_dir.mkdir()
+        (registration_dir / f"{self.batch['device_id']}-rialo-registration.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "status": "RIALO_DEVICE_REGISTERED",
+                    "device_id": self.batch["device_id"],
+                    "public_key_fingerprint": self.batch[
+                        "device_public_key_fingerprint"
+                    ],
+                    "program_id": self.program_id,
+                    "transaction_signature": self.registration_transaction,
+                    "workflow_address": self.registration_workflow,
+                    "workflow_slug": "device-e0473",
+                    "registrar": "PAYER",
+                }
+            ),
+            encoding="utf-8",
+        )
         self.bundle = PortalStore(self.data_dir).export_bundle(self.batch["batch_id"])
         self.archive = ArchiveStore(
-            self.root / "archive.sqlite3", client_factory=self.client_factory
+            self.root / "archive.sqlite3",
+            client_factory=self.client_factory,
+            expected_device_registrar="PAYER",
         )
 
     def tearDown(self) -> None:

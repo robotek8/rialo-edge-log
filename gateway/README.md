@@ -24,8 +24,9 @@ port:
 python -m gateway.edge_gateway listen --port COM5
 ```
 
-The first valid registration is saved to `data/device_registry.json`. This is a
-local trust-on-first-use registry. With the simulator's five-second interval, a
+The first valid registration is saved to `data/device_registry.json`. This local
+trust-on-first-use record is later bound to the project's published registrar
+wallet in a one-time Rialo workflow. With the simulator's five-second interval, a
 60-reading batch is saved once every five minutes under `data/batches/`. Use
 `--batch-size 12` only for a short one-minute demonstration.
 
@@ -98,10 +99,16 @@ python -m gateway.rialo_anchor watch `
 The watcher leaves existing files untouched by default. For every new batch it:
 
 1. verifies the device signatures and local SHA-256 proof;
-2. invokes the deployed Venus program through `wsl.exe`;
-3. waits until the transaction is readable from Rialo DevNet;
-4. reads the created workflow state and compares it with the batch;
-5. saves a `RIALO_VERIFIED` receipt under `data/receipts/`.
+2. creates or verifies the device's one-time on-chain registration under
+   `data/registrations/`;
+3. invokes the deployed Venus proof workflow through `wsl.exe`;
+4. waits until the transaction is readable from Rialo DevNet;
+5. reads the created workflow state and compares it with the batch;
+6. saves a `RIALO_VERIFIED` receipt under `data/receipts/`.
+
+If a new Program ID is configured after a Devnet reset, pending files from the
+previous deployment are preserved under `network-history/` and no longer block
+automatic retries.
 
 The default WSL project directory is `~/rialo-edge-log`. Override it when the
 repository is stored elsewhere:
@@ -188,5 +195,6 @@ these results:
 - `TAMPERED`: the telemetry, identity, receipt or Rialo state does not match;
 - `CHAIN_UNAVAILABLE`: local verification passed, but DevNet RPC could not be reached.
 
-The publisher transfers raw telemetry, the public device key and the Rialo
-receipt. It never transfers the device private key, wallet or credentials.
+The publisher transfers raw telemetry, the public device key, its verified
+on-chain registration receipt and the batch receipt. It never transfers the
+device private key, wallet or credentials.

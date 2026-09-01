@@ -35,18 +35,23 @@ from gateway.edge_gateway import (
 from gateway.rialo_args import (
     build_arguments,
     build_command,
+    build_registration_arguments,
+    build_registration_command,
     device_id_to_u64,
     hex_digest_to_u64_words,
+    registration_workflow_slug,
 )
 from gateway.rialo_anchor import (
     RialoAnchorError,
     batch_receipt_exists,
     build_wsl_invocation,
     extract_transaction_signature,
+    load_pending_submission,
     pending_receipt_path,
     receipt_path,
     save_pending_submission,
     submit_batch,
+    submit_device_registration,
     watch_batches,
 )
 from gateway.rialo_verify import (
@@ -513,6 +518,102 @@ class RialoAnchoringTests(unittest.TestCase):
             pending = json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(pending["status"], "SUBMITTED_UNVERIFIED")
         self.assertEqual(pending["transaction_signature"], "TRANSACTION789")
+
+    def test_old_network_pending_is_archived_before_retry(self) -> None:
+        new_program_id = "2fxd9oeT1pHRECfdGgnPo3R8GXuFCo1j2kYUvVmfwq93"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pending = save_pending_submission(
+                self.batch, root, self.program_id, "TRANSACTION789"
+            )
+            resumed = load_pending_submission(
+                self.batch, root, new_program_id
+            )
+            archived = (
+                root
+                / "network-history"
+                / self.program_id
+                / pending.name
+            )
+            self.assertFalse(pending.exists())
+            self.assertTrue(archived.exists())
+        self.assertIsNone(resumed)
+
+    def test_registration_command_uses_deterministic_device_workflow(self) -> None:
+        fingerprint = self.batch["device_public_key_fingerprint"]
+        command = build_registration_command(
+            self.batch["device_id"], fingerprint, self.program_id
+        )
+        self.assertIn("--function register", command)
+        self.assertIn(
+            f"workflow_pda_slug={registration_workflow_slug(self.batch['device_id'])}",
+            command,
+        )
+
+    def test_device_registration_is_verified_and_saved(self) -> None:
+        signature = (
+            "2WbkTi4SB7449Yhy8Rwo1XwxwiGZLdn1dDqYhL4TYqnoTsStGXKuayH2Wch"
+            "FYnkD1jntoaW5mPYcCjRKJMFqBRXL"
+        )
+        workflow = "2zFvYcDgb4US6RHcPhvTVAQTcTK8T9R6hf9iNLHANUsp"
+        fingerprint = self.batch["device_public_key_fingerprint"]
+        registration_values = [
+            value
+            for _, value in build_registration_arguments(
+                self.batch["device_id"], fingerprint
+            )
+        ]
+        raw_state = struct.pack("<13Q", 1, *registration_values, *([0] * 7))
+        transaction = {
+            "block_height": 789,
+            "transaction": {
+                "message": {
+                    "accountKeys": ["PAYER", workflow, "SYSTEM", self.program_id],
+                    "instructions": [{"programIdIndex": 3, "accounts": [0, 1, 2]}],
+                }
+            },
+            "meta": {"err": None},
+        }
+        account = {
+            "owner": self.program_id,
+            "data": [base64.b64encode(raw_state).decode("ascii"), "base64"],
+        }
+
+        class FakeClient:
+            def get_transaction(inner_self, requested_signature: str) -> dict:
+                self.assertEqual(requested_signature, signature)
+                return transaction
+
+            def get_account_info(inner_self, requested_address: str) -> dict:
+                self.assertEqual(requested_address, workflow)
+                return account
+
+        def fake_runner(*args, **kwargs) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                args=args[0],
+                returncode=0,
+                stdout=f"Invoked register\nTransaction: {signature}\n",
+                stderr="",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            saved, saved_signature, saved_workflow, _ = submit_device_registration(
+                self.batch["device_id"],
+                self.public_key,
+                Path(directory),
+                self.program_id,
+                "http://example.invalid",
+                "~/rialo-edge-log",
+                1.0,
+                client=FakeClient(),
+                runner=fake_runner,
+            )
+            receipt = json.loads(saved.read_text(encoding="utf-8"))
+
+        self.assertEqual(saved_signature, signature)
+        self.assertEqual(saved_workflow, workflow)
+        self.assertEqual(receipt["status"], "RIALO_DEVICE_REGISTERED")
+        self.assertEqual(receipt["registrar"], "PAYER")
 
     def test_existing_final_receipt_is_detected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -2,6 +2,7 @@
   "use strict";
 
   const DEFAULT_RPC_URL = "https://devnet.rialoscan.org/api/rpc";
+  const DEFAULT_DEVICE_REGISTRAR = "BBjJpGwN3aV3BrMPw6BCZHZue8btcqTTfXouG9Nv9Sz6";
   const TEXT_ENCODER = new TextEncoder();
 
   class VerificationError extends Error {
@@ -169,6 +170,16 @@
     });
   }
 
+  function transactionFeePayer(transactionResult) {
+    const message = transactionResult
+      && transactionResult.transaction
+      && transactionResult.transaction.message;
+    assert(message && Array.isArray(message.accountKeys) && message.accountKeys.length > 0, "Rialo transaction fee payer is missing");
+    const payer = accountKey(message.accountKeys[0]);
+    assert(payer, "Rialo transaction fee payer is invalid");
+    return payer;
+  }
+
   function readU64(view, offset) {
     return view.getBigUint64(offset, true);
   }
@@ -195,6 +206,42 @@
   function deviceIdToU64(deviceId) {
     assert(typeof deviceId === "string" && /^edge-[0-9a-f]+$/i.test(deviceId), "Device ID cannot be encoded for Rialo");
     return BigInt(`0x${deviceId.slice(5)}`);
+  }
+
+  function registrationWorkflowSlug(deviceId) {
+    return `device-${deviceIdToU64(deviceId).toString(16)}`;
+  }
+
+  function verifyRegistrationIdentity(registration, batch, receipt, expectedRegistrar) {
+    assert(registration && registration.schema_version === 1, "Device registration receipt is missing", "INVALID_RECEIPT");
+    assert(registration.status === "RIALO_DEVICE_REGISTERED", "Device registration status is invalid", "INVALID_RECEIPT");
+    assert(registration.device_id === batch.device_id, "Device registration belongs to another device", "INVALID_RECEIPT");
+    assert(registration.public_key_fingerprint === batch.device_public_key_fingerprint, "Device registration contains another public key", "INVALID_RECEIPT");
+    assert(registration.program_id === receipt.program_id, "Device registration uses another program", "INVALID_RECEIPT");
+    assert(registration.workflow_slug === registrationWorkflowSlug(batch.device_id), "Device registration workflow slug is invalid", "INVALID_RECEIPT");
+    assert(registration.registrar === expectedRegistrar, "Device registration signer is not trusted", "INVALID_RECEIPT");
+    for (const field of ["transaction_signature", "workflow_address", "registrar"]) {
+      assert(typeof registration[field] === "string" && registration[field], `Device registration ${field} is missing`, "INVALID_RECEIPT");
+    }
+  }
+
+  function verifyRegistrationState(registration, batch, transaction, account) {
+    assert(
+      transactionContainsWorkflow(
+        transaction,
+        registration.program_id,
+        registration.workflow_address,
+      ),
+      "Registration transaction does not point to the claimed workflow",
+    );
+    assert(transactionFeePayer(transaction) === registration.registrar, "Device registrar does not match the registration transaction");
+    const state = decodeWorkflowAccount(account, registration.program_id);
+    assert(state.deviceId === deviceIdToU64(batch.device_id), "Registered on-chain device ID does not match");
+    assert(state.publicKeyFingerprint === batch.device_public_key_fingerprint, "Registered on-chain public key does not match");
+    assert(state.batchDigest === "00".repeat(32), "Device registration contains a batch digest");
+    assert(state.firstSequence === 0n, "Device registration first sequence is not zero");
+    assert(state.lastSequence === 0n, "Device registration last sequence is not zero");
+    assert(state.readingCount === 0n, "Device registration reading count is not zero");
   }
 
   function transactionMetadata(transactionResult) {
@@ -245,10 +292,26 @@
     assert(localDigest === batch.proof.digest, "Recalculated SHA-256 digest does not match the archive");
 
     const rpcCall = options.rpcCall || ((method, params) => defaultRpcCall(method, params, options.rpcUrl));
-    const [transaction, account] = await Promise.all([
+    const requests = [
       rpcCall("getTransaction", [{ signature: receipt.transaction_signature }]),
       rpcCall("getAccountInfo", [{ address: receipt.workflow_address, encoding: "base64" }]),
-    ]);
+    ];
+    const registration = bundle.schema_version === 2
+      ? bundle.device_registration
+      : null;
+    if (bundle.schema_version === 2) {
+      verifyRegistrationIdentity(
+        registration,
+        batch,
+        receipt,
+        options.expectedRegistrar || DEFAULT_DEVICE_REGISTRAR,
+      );
+      requests.push(
+        rpcCall("getTransaction", [{ signature: registration.transaction_signature }]),
+        rpcCall("getAccountInfo", [{ address: registration.workflow_address, encoding: "base64" }]),
+      );
+    }
+    const [transaction, account, registrationTransaction, registrationAccount] = await Promise.all(requests);
     assert(transactionContainsWorkflow(transaction, receipt.program_id, receipt.workflow_address), "Transaction does not point to the claimed Rialo workflow");
     const workflow = decodeWorkflowAccount(account, receipt.program_id);
     assert(workflow.deviceId === deviceIdToU64(batch.device_id), "On-chain device ID does not match");
@@ -258,6 +321,15 @@
     assert(workflow.lastSequence === BigInt(batch.last_sequence), "On-chain last sequence does not match");
     assert(workflow.readingCount === BigInt(batch.reading_count), "On-chain reading count does not match");
 
+    if (registration) {
+      verifyRegistrationState(
+        registration,
+        batch,
+        registrationTransaction,
+        registrationAccount,
+      );
+    }
+
     return {
       status: "RIALO_VERIFIED",
       signaturesVerified,
@@ -266,6 +338,14 @@
       transactionSignature: receipt.transaction_signature,
       workflowAddress: receipt.workflow_address,
       programId: receipt.program_id,
+      deviceRegistrationVerified: Boolean(registration),
+      registrationTransactionSignature: registration
+        ? registration.transaction_signature
+        : null,
+      registrationWorkflowAddress: registration
+        ? registration.workflow_address
+        : null,
+      registrationRegistrar: registration ? registration.registrar : null,
       rpcUrl: options.rpcUrl || DEFAULT_RPC_URL,
       ...transactionMetadata(transaction),
     };
@@ -273,6 +353,7 @@
 
   global.RialoVerifier = {
     DEFAULT_RPC_URL,
+    DEFAULT_DEVICE_REGISTRAR,
     VerificationError,
     calculateBatchDigest,
     parseProofBundle,
