@@ -36,5 +36,8 @@ commit it, or reuse its private key on another device.
 
 The gateway stores the public key locally using trust on first use. If the same
 device ID later presents another key, collection stops with a security warning.
-Key registration on Rialo is not implemented; the local registry is currently
-the source of truth for device identity.
+Before publishing the first batch, the anchor creates a one-time Rialo workflow
+that binds the numeric device ID to the public-key fingerprint. The registration
+transaction must be signed by the project's published registrar wallet. The
+archive and browser verify that on-chain binding independently; the private key
+never leaves the ESP8266 firmware.

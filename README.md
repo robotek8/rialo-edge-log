@@ -52,17 +52,19 @@ DS18B20 will be connected in the next hardware revision.
 - HTTPS archive at [rialo-edge-log.xyz](https://rialo-edge-log.xyz)
 - independent browser checks and links to the matching RialoScan records
 - Docker deployment for the archive and hidden Windows background tasks
-- signed boot-session, reset-reason, and enclosure-tamper telemetry fields
+- schema-3 firmware and verifier support for signed boot-session, reset-reason,
+  and enclosure-tamper telemetry fields; existing schema-2 history remains valid
 - one-minute signed heartbeats for live device presence on the public portal
 - one-time on-chain registration of the device ID and public-key fingerprint
 
-The deployed Venus program ID is
-`GVJpRi8SVURsjKbLC84Azk24vV2cK3ib74aXRk5hdatF`.
+The current Venus program ID is
+[`GVJpRi8SVURsjKbLC84Azk24vV2cK3ib74aXRk5hdatF`](https://devnet.rialoscan.org/address/GVJpRi8SVURsjKbLC84Azk24vV2cK3ib74aXRk5hdatF).
+The published registrar wallet is
+`BBjJpGwN3aV3BrMPw6BCZHZue8btcqTTfXouG9Nv9Sz6`.
 
-An early confirmed example covers device `edge-0E0473`, sequences `73-84`:
-
-- workflow: `2zFvYcDgb4US6RHcPhvTVAQTcTK8T9R6hf9iNLHANUsp`
-- transaction: `2WbkTi4SB7449Yhy8Rwo1XwxwiGZLdn1dDqYhL4TYqnoTsStGXKuayH2WchFYnkD1jntoaW5mPYcCjRKJMFqBRXL`
+Current confirmed transactions, workflows and independent verification results
+are shown in the [live archive](https://rialo-edge-log.xyz). Fixed transaction
+examples are intentionally not kept here because Rialo Devnet can reset.
 
 ## Repository map
 
