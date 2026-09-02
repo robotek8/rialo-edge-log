@@ -142,7 +142,7 @@ python -m gateway.portal
 
 Open `http://127.0.0.1:8080` in a browser. The portal stays bound to the local
 computer by default and reads the existing `data/batches/`, `data/receipts/`
-and `data/device_registry.json` files.
+`data/registrations/` and `data/device_registry.json` files.
 
 The local view uses the same device-history interface as the public archive. It
 lets an operator:
@@ -187,13 +187,16 @@ While `watch` is running, it also retries changed heartbeat files from
 device key before updating live presence, temperature, boot ID, reset reason,
 or tamper state.
 
-An archive visitor opens the device link, selects a period and receives one of
-these results:
+A local portal can produce these verification results:
 
 - `RIALO_VERIFIED`: device signatures, local batch and Rialo workflow match;
 - `LOCAL_VERIFIED`: local cryptography matches, but the bundle has no Rialo receipt;
 - `TAMPERED`: the telemetry, identity, receipt or Rialo state does not match;
 - `CHAIN_UNAVAILABLE`: local verification passed, but DevNet RPC could not be reached.
+
+The public archive accepts only complete `RIALO_VERIFIED` bundles that also
+contain a valid on-chain device registration. A later live re-check can still
+report `CHAIN_UNAVAILABLE` when the Devnet RPC is temporarily unavailable.
 
 The publisher transfers raw telemetry, the public device key, its verified
 on-chain registration receipt and the batch receipt. It never transfers the

@@ -5,13 +5,17 @@ device-ID and public-key-fingerprint binding; `start` stores one proof record fo
 one signed telemetry batch. It uses `u64` parameters and has been built and
 deployed with Rialo 0.18.1.
 
-Each workflow instance records:
+The shared workflow state can record:
 
 - numeric ESP8266 device ID;
 - SHA-256 fingerprint of the enrolled P-256 public key;
 - SHA-256 digest of the complete signed batch;
 - first and last device sequence numbers;
 - number of readings.
+
+`register` fills the device ID and public-key fingerprint once for the
+deterministic device workflow. `start` fills the complete batch-proof fields in
+a separate workflow for each submitted batch.
 
 Both 32-byte hashes are passed as four little-endian `u64` values. The original
 public key and telemetry remain off-chain.
@@ -33,7 +37,7 @@ Venus should generate the WIT interface and manifest under `wit/`.
 ## Deploy
 
 ```bash
-rialo client program deploy-venus .
+rialo client program deploy-venus -n devnet .
 ```
 
 Save the resulting program ID. Generate an invocation command from a verified

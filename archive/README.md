@@ -28,6 +28,7 @@ then asks the archive to compare it with the Rialo workflow again.
 
 - signed telemetry readings;
 - the device's public key and fingerprint;
+- the verified on-chain device-registration receipt and registrar identity;
 - the batch SHA-256 digest;
 - the Rialo program, transaction and workflow addresses.
 
@@ -37,12 +38,15 @@ Private device keys, wallets and credentials are never part of an upload.
 
 - `POST /api/ingest` requires the `RIALO_EDGE_LOG_INGEST_TOKEN` bearer token.
 - public read and verification endpoints never expose that token.
-- a device ID is permanently bound to its first accepted public key.
+- a device ID is bound to its first accepted public key and must match the
+  independently verified Rialo registration.
 - conflicting contents under an existing batch ID are rejected.
 - only a complete `RIALO_VERIFIED` proof bundle is accepted.
 
-The default server binds to `127.0.0.1` and uses
+The default development server binds to `127.0.0.1` and uses
 `data/archive/archive.sqlite3`. A real internet deployment still requires a
 durable host, TLS, backups and secret management; do not expose this development
-server directly to the internet. Production-ready systemd and Nginx templates
-are documented in [`deploy/vps`](../deploy/vps/README.md).
+server directly to the internet. The active Docker and Caddy deployment is
+documented in [`deploy/vps-docker`](../deploy/vps-docker/README.md). Systemd and
+Nginx templates remain available in [`deploy/vps`](../deploy/vps/README.md) as
+an alternative layout.

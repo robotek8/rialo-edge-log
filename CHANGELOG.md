@@ -12,6 +12,7 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 - Added signed boot IDs, reset reasons, and optional enclosure-tamper state to telemetry schema 3 while preserving schema-2 verification.
 - Added one-minute signed device heartbeats so the public portal reports live presence without waiting for the next anchored batch.
 - Added a live hero stream built from recent confirmed Rialo Devnet transactions. Each entry links to its transaction in RialoScan.
+- Added direct RialoScan links for batch transactions, workflow accounts, and the active Venus program.
 - Added GitHub, X, and Telegram profile links to the public portal footer.
 - Added OpenGraph and X card metadata with a branded 1200×630 preview image.
 - Added explicit proof boundaries and live device presence states to the public portal.
@@ -19,6 +20,8 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 ### Fixed
 
 - Encoded the deterministic device-registration workflow slug as hexadecimal, as required by the Rialo CLI.
+- Closed archive SQLite connections explicitly so Windows tests and maintenance no longer leave the database locked.
+- Matched the OpenGraph preview typography to the public portal and stabilized the hero layout.
 - Preserved stale pending submissions under `network-history/` and retried them automatically when a Devnet reset requires a new program deployment.
 - Refreshed devices, selected history, Rialo transactions, and network status automatically every 30 seconds without reloading the portal.
 - Retried transient Rialo anchoring failures and recovered unprocessed verified batches after Windows worker restarts.

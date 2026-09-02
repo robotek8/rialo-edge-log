@@ -21,6 +21,8 @@ an earlier run.
 When Devnet is reset and the Venus program receives a new Program ID, the anchor
 preserves pending files from the old deployment under `network-history/` and
 submits the affected batches again instead of entering a permanent retry loop.
+Pass the replacement explicitly with `-ProgramId NEW_PROGRAM_ID` when updating
+the scheduled tasks after such a reset.
 
 The archive token is stored using Windows DPAPI. It can only be decrypted by
 the same Windows account on the same computer. It is never written into the
