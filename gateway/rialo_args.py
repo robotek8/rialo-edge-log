@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -81,20 +82,29 @@ def build_registration_arguments(
 
 
 def build_registration_command(
-    device_id: str, public_key_fingerprint: str, program_id: str
+    device_id: str,
+    public_key_fingerprint: str,
+    program_id: str,
+    rpc_url: str | None = None,
 ) -> str:
     parts = [
         "rialo",
         "client",
         "program",
-        "invoke",
-        "--program-dir",
-        "rialo/edge-log-proof",
-        "--function",
-        "register",
-        "--arg",
-        f"workflow_pda_slug={registration_workflow_slug(device_id)}",
     ]
+    if rpc_url:
+        parts.extend(["--url", shlex.quote(rpc_url)])
+    parts.extend(
+        [
+            "invoke",
+            "--program-dir",
+            "rialo/edge-log-proof",
+            "--function",
+            "register",
+            "--arg",
+            f"workflow_pda_slug={registration_workflow_slug(device_id)}",
+        ]
+    )
     for name, value in build_registration_arguments(
         device_id, public_key_fingerprint
     ):
@@ -103,19 +113,27 @@ def build_registration_command(
     return " ".join(parts)
 
 
-def build_command(batch: dict[str, Any], program_id: str) -> str:
+def build_command(
+    batch: dict[str, Any], program_id: str, rpc_url: str | None = None
+) -> str:
     parts = [
         "rialo",
         "client",
         "program",
-        "invoke",
-        "--program-dir",
-        "rialo/edge-log-proof",
-        "--function",
-        "start",
-        "--arg",
-        "workflow_pda_slug=random",
     ]
+    if rpc_url:
+        parts.extend(["--url", shlex.quote(rpc_url)])
+    parts.extend(
+        [
+            "invoke",
+            "--program-dir",
+            "rialo/edge-log-proof",
+            "--function",
+            "start",
+            "--arg",
+            "workflow_pda_slug=random",
+        ]
+    )
     for name, value in build_arguments(batch):
         parts.extend(["--arg", f"{name}={value}"])
     parts.append(program_id)

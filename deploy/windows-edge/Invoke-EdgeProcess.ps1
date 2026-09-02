@@ -25,11 +25,26 @@ switch ($Role) {
         )
     }
     "anchor" {
+        $rpcUrl = if ($config.rpcUrl) {
+            [string]$config.rpcUrl
+        } else {
+            "http://devnet.rialo.io:4100"
+        }
+        $cliRpcUrl = $rpcUrl
+        if ($config.rpcTunnelEnabled) {
+            $wslGateway = (& wsl.exe -- bash -lc "ip route show default | awk '/default/ {print `$3; exit}'").Trim()
+            if ([string]::IsNullOrWhiteSpace($wslGateway)) {
+                throw "Could not determine the Windows host address from WSL"
+            }
+            $cliRpcUrl = "http://${wslGateway}:$($config.rpcTunnelLocalPort)"
+        }
         $pythonArguments = @(
             "-m", "gateway.rialo_anchor", "watch",
             "--include-existing",
             "--program-id", [string]$config.programId,
-            "--wsl-project-dir", [string]$config.wslProjectDirectory
+            "--wsl-project-dir", [string]$config.wslProjectDirectory,
+            "--rpc-url", $rpcUrl,
+            "--cli-rpc-url", $cliRpcUrl
         )
     }
     "publisher" {
