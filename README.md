@@ -52,6 +52,8 @@ DS18B20 will be connected in the next hardware revision.
 - HTTPS archive at [rialo-edge-log.xyz](https://rialo-edge-log.xyz)
 - independent browser checks and links to the matching RialoScan records
 - Docker deployment for the archive and hidden Windows background tasks
+- optional self-healing SSH RPC tunnel for networks that block Rialo Devnet
+  port `4100`, shared safely by the Windows verifier and Rialo CLI in WSL
 - schema-3 firmware and verifier support for signed boot-session, reset-reason,
   and enclosure-tamper telemetry fields; existing schema-2 history remains valid
 - one-minute signed heartbeats for live device presence on the public portal
@@ -102,6 +104,8 @@ the latest reading and matching its key to a previously published device.
 - make workflow identifiers easier to trace across long-running deployments
 - add an end-to-end test covering collection, anchoring, publication, and
   browser verification
+- replace the temporary VPS RPC route when Rialo exposes a universally
+  reachable HTTPS endpoint
 - review a lower anchoring frequency for longer runs
 
 ## Security and project status

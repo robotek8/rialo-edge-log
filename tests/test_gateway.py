@@ -339,6 +339,18 @@ class RialoArgumentTests(unittest.TestCase):
         self.assertIn("--arg workflow_pda_slug=random", command)
         self.assertTrue(command.endswith("PROGRAM123"))
 
+    def test_command_can_route_cli_through_an_explicit_rpc_url(self) -> None:
+        command = build_command(
+            self.batch,
+            "PROGRAM123",
+            rpc_url="http://172.20.0.1:44100",
+        )
+
+        self.assertIn(
+            "rialo client program --url http://172.20.0.1:44100 invoke",
+            command,
+        )
+
 
 class RialoHistoricalVerificationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -496,6 +508,19 @@ class RialoAnchoringTests(unittest.TestCase):
         self.assertIn('cd -- "$HOME"/rialo-edge-log', command[4])
         self.assertIn("rialo client program invoke", command[4])
         self.assertIn(self.program_id, command[4])
+
+    def test_wsl_command_uses_the_cli_specific_rpc_url(self) -> None:
+        command = build_wsl_invocation(
+            self.batch,
+            self.program_id,
+            "~/rialo-edge-log",
+            rpc_url="http://172.20.0.1:44100",
+        )
+
+        self.assertIn(
+            "rialo client program --url http://172.20.0.1:44100 invoke",
+            command[4],
+        )
 
     def test_extracts_transaction_signature_from_cli_output(self) -> None:
         signature = (

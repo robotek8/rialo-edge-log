@@ -19,6 +19,11 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 
 ### Fixed
 
+- Added an optional self-healing SSH tunnel for Windows networks that cannot
+  reach Rialo Devnet on port `4100`; Windows verification and the Rialo CLI in
+  WSL now receive separate, explicit RPC URLs through the same tunnel.
+- Added Task Scheduler restart policies for the tunnel and edge workers, and
+  made the stack manager start and stop the tunnel with the other services.
 - Encoded the deterministic device-registration workflow slug as hexadecimal, as required by the Rialo CLI.
 - Closed archive SQLite connections explicitly so Windows tests and maintenance no longer leave the database locked.
 - Matched the OpenGraph preview typography to the public portal and stabilized the hero layout.
