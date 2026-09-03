@@ -44,6 +44,8 @@ class WindowsEdgeDeploymentTests(unittest.TestCase):
         self.assertIn('"--rpc-url", $rpcUrl', runner)
         self.assertIn('"--cli-rpc-url", $cliRpcUrl', runner)
         self.assertIn("ip route show default", runner)
+        self.assertIn("[regex]::Match", runner)
+        self.assertNotIn("awk '/default/", runner)
         self.assertGreater(
             runner.index("ip route show default"),
             runner.index('"anchor" {'),

@@ -32,10 +32,15 @@ switch ($Role) {
         }
         $cliRpcUrl = $rpcUrl
         if ($config.rpcTunnelEnabled) {
-            $wslGateway = (& wsl.exe -- bash -lc "ip route show default | awk '/default/ {print `$3; exit}'").Trim()
-            if ([string]::IsNullOrWhiteSpace($wslGateway)) {
+            $routeOutput = & wsl.exe -- ip route show default
+            $routeMatch = [regex]::Match(
+                ($routeOutput -join "`n"),
+                "(?m)^default\s+via\s+([0-9.]+)\b"
+            )
+            if (-not $routeMatch.Success) {
                 throw "Could not determine the Windows host address from WSL"
             }
+            $wslGateway = $routeMatch.Groups[1].Value
             $cliRpcUrl = "http://${wslGateway}:$($config.rpcTunnelLocalPort)"
         }
         $pythonArguments = @(
