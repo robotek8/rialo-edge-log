@@ -19,6 +19,8 @@ Notable changes to Rialo Edge Log are recorded here as the project evolves.
 
 ### Fixed
 
+- Parsed the WSL default gateway in PowerShell so the complete route line can
+  never be passed to the anchor as a malformed RPC URL.
 - Added an optional self-healing SSH tunnel for Windows networks that cannot
   reach Rialo Devnet on port `4100`; Windows verification and the Rialo CLI in
   WSL now receive separate, explicit RPC URLs through the same tunnel.
