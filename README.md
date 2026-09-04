@@ -9,6 +9,20 @@ The current firmware uses simulated temperature values. A DS18B20 is the next
 hardware step; replacing the data source will not change the signing, batching,
 or verification flow.
 
+## Planned milestone — September 14, 2026
+
+The next hands-on upgrade is scheduled for **September 14, 2026**:
+
+- connect a physical DS18B20 temperature sensor and replace the simulated
+  temperature source with real measurements;
+- migrate the always-on Rialo Edge Log services to a new dedicated server,
+  reducing the project's dependence on the current Windows host;
+- verify that signing, batching, Rialo anchoring, publication, heartbeats, and
+  browser verification continue to work end-to-end after the migration.
+
+The goal is to move from a simulated hardware prototype to a continuously
+running physical edge-data pipeline without changing the existing proof model.
+
 ## How it works
 
 ```text
@@ -40,8 +54,8 @@ The editable Mermaid source is available in
 ![NodeMCU V3 used by Rialo Edge Log](docs/hardware/nodemcu-v3-prototype.jpg)
 
 This is the NodeMCU V3 currently producing and signing the live telemetry shown
-in the public archive. Temperature is still simulated in firmware; a physical
-DS18B20 will be connected in the next hardware revision.
+in the public archive. Temperature is still simulated in firmware; physical
+DS18B20 integration is scheduled for September 14, 2026.
 
 ## What is running now
 
@@ -100,7 +114,10 @@ the latest reading and matching its key to a previously published device.
 
 ## Next steps
 
-- read temperature from a physical DS18B20 instead of the simulator
+- **September 14, 2026:** connect the physical DS18B20 and switch from simulated
+  temperature to real sensor readings
+- **September 14, 2026:** migrate the always-on stack to the new dedicated
+  server and validate the full pipeline after the move
 - make workflow identifiers easier to trace across long-running deployments
 - add an end-to-end test covering collection, anchoring, publication, and
   browser verification
