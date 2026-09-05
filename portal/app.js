@@ -54,11 +54,12 @@ const translations = {
     copyDone: "Ссылка скопирована",
     metricBatches: "Подтверждённых батчей",
     metricReadings: "Показаний",
-    metricFirst: "Первый sequence",
-    metricLast: "Последний sequence",
+    metricFirst: "Сеансов загрузки",
+    metricLast: "Текущий sequence",
     tableStatus: "Подтверждение",
     tableTime: "Время",
     tableRange: "Диапазон",
+    tableSession: "Сеанс загрузки",
     tableReadings: "Показаний",
     tableAverage: "Средняя °C",
     previousPage: "← Назад",
@@ -199,11 +200,12 @@ const translations = {
     copyDone: "Link copied",
     metricBatches: "Verified batches",
     metricReadings: "Readings",
-    metricFirst: "First sequence",
-    metricLast: "Latest sequence",
+    metricFirst: "Boot sessions",
+    metricLast: "Current sequence",
     tableStatus: "Verification",
     tableTime: "Recorded at",
     tableRange: "Sequence range",
+    tableSession: "Boot session",
     tableReadings: "Readings",
     tableAverage: "Average °C",
     previousPage: "← Previous",
@@ -432,6 +434,20 @@ function resetReasonText(value) {
     unknown: "resetUnknown",
   };
   return t(keys[value] || "resetUnknown");
+}
+
+function sessionNode(batch, isSessionStart = false) {
+  const wrapper = document.createElement("span");
+  wrapper.className = "batch-session";
+  const boot = document.createElement("code");
+  boot.textContent = formatBootId(batch.boot_id);
+  wrapper.append(boot);
+  if (isSessionStart && batch.reset_reason) {
+    const reason = document.createElement("span");
+    reason.textContent = resetReasonText(batch.reset_reason);
+    wrapper.append(reason);
+  }
+  return wrapper;
 }
 
 function renderNetworkStatus() {
@@ -770,12 +786,17 @@ function tableCell(label, content, className = "") {
 
 function updateDeviceMetrics() {
   const readings = state.batches.reduce((total, batch) => total + Number(batch.reading_count || 0), 0);
-  const first = state.batches.map((batch) => Number(batch.first_sequence)).filter(Number.isFinite);
-  const last = state.batches.map((batch) => Number(batch.last_sequence)).filter(Number.isFinite);
+  const sessions = new Set(
+    state.batches
+      .map((batch) => batch.boot_id)
+      .filter((value) => value != null)
+      .map(String),
+  );
+  const latestBatch = state.batches[0];
   document.querySelector("#metric-batches").textContent = state.batches.length;
   document.querySelector("#metric-readings").textContent = readings;
-  document.querySelector("#metric-first").textContent = first.length ? Math.min(...first) : "—";
-  document.querySelector("#metric-last").textContent = last.length ? Math.max(...last) : "—";
+  document.querySelector("#metric-first").textContent = sessions.size || "—";
+  document.querySelector("#metric-last").textContent = latestBatch?.last_sequence ?? "—";
 }
 
 function renderBatches() {
@@ -796,7 +817,8 @@ function renderBatches() {
     status.append(statusNode());
     const batchIndex = pageStart + visibleIndex;
     const olderBatch = state.batches[batchIndex + 1];
-    if (batch.boot_id != null && (!olderBatch || olderBatch.boot_id !== batch.boot_id)) {
+    const isSessionStart = batch.boot_id != null && Boolean(olderBatch) && olderBatch.boot_id !== batch.boot_id;
+    if (isSessionStart) {
       const reboot = document.createElement("span");
       reboot.className = "status reboot-event";
       reboot.textContent = t("rebootEvent");
@@ -812,6 +834,7 @@ function renderBatches() {
       tableCell(t("tableStatus"), status),
       tableCell(t("tableTime"), formatDate(batch.created_at_utc)),
       tableCell(t("tableRange"), `${batch.first_sequence}–${batch.last_sequence}`, "mono"),
+      tableCell(t("tableSession"), sessionNode(batch, isSessionStart), "session-cell"),
       tableCell(t("tableReadings"), String(batch.reading_count), "mono"),
       tableCell(t("tableAverage"), formatTemperature(batch.temperature?.average), "mono"),
       tableCell("", inspect),

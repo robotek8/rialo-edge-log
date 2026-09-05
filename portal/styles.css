@@ -289,6 +289,9 @@ td.mono { font-family: var(--mono); }
 .status.reboot-event { color: var(--warning); }
 .status.reboot-event::before { background: var(--warning); }
 .batch-statuses { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.batch-session { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; white-space: nowrap; }
+.batch-session code { color: var(--paper); font: 600 11px var(--mono); }
+.batch-session span { color: var(--warning); font: 600 9px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
 .device-presence.online { color: var(--verified); }
 .device-presence.online::before { background: var(--verified); box-shadow: 0 0 10px rgba(112,230,196,.55); }
 .device-presence.stale { color: var(--warning); }
