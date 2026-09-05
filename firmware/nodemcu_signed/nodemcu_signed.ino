@@ -29,6 +29,7 @@ namespace {
 
 constexpr uint32_t kSerialBaud = 115200;
 constexpr uint32_t kSampleIntervalMs = 5000;
+constexpr uint32_t kWatchdogTimeoutMs = 8000;
 constexpr int32_t kMinimumTemperatureMilliC = 3500;
 constexpr int32_t kMaximumTemperatureMilliC = 5500;
 constexpr size_t kSha256Length = 32;
@@ -149,10 +150,13 @@ void printSignedTelemetry() {
       tamperOpen ? 1U : 0U);
 
   char signatureHex[kRawP256SignatureLength * 2 + 1];
+  ESP.wdtFeed();
   if (!signPayload(canonicalPayload, signatureHex)) {
     Serial.println("SIGNING_ERROR");
+    ESP.wdtFeed();
     return;
   }
+  ESP.wdtFeed();
 
   Serial.printf(
       "{\"message_type\":\"telemetry\",\"schema_version\":3,"
@@ -192,17 +196,25 @@ void setup() {
     pinMode(kTamperPin, kTamperOpenWhenHigh ? INPUT_PULLUP : INPUT);
   }
 
+  ESP.wdtEnable(kWatchdogTimeoutMs);
+  ESP.wdtFeed();
+
   Serial.println();
   Serial.println("Rialo Edge Log - signed NodeMCU telemetry");
   Serial.printf("Device ID: %s\n", deviceId);
   Serial.printf("Boot ID: %08lx, reset: %s\n", static_cast<unsigned long>(bootId), resetReason);
+  Serial.printf("Watchdog: enabled (%lu ms)\n", static_cast<unsigned long>(kWatchdogTimeoutMs));
   printRegistration();
   nextSampleAtMs = millis();
+  ESP.wdtFeed();
 }
 
 void loop() {
+  ESP.wdtFeed();
+
   const uint32_t nowMs = millis();
   if (static_cast<int32_t>(nowMs - nextSampleAtMs) < 0) {
+    delay(1);
     return;
   }
 
@@ -210,4 +222,5 @@ void loop() {
   updateSimulatedTemperature();
   printSignedTelemetry();
   blinkStatusLed();
+  ESP.wdtFeed();
 }
