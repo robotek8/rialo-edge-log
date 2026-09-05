@@ -1,0 +1,141 @@
+name: Apply boot-session history UI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/apply-boot-session-ui.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch portal history UI
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, got {count}\n--- OLD ---\n{old}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          app = "portal/app.js"
+          replace_once(app, '    metricFirst: "Первый sequence",\n    metricLast: "Последний sequence",', '    metricFirst: "Сеансов загрузки",\n    metricLast: "Текущий sequence",')
+          replace_once(app, '    tableRange: "Диапазон",\n    tableReadings: "Показаний",', '    tableRange: "Диапазон",\n    tableSession: "Сеанс загрузки",\n    tableReadings: "Показаний",')
+          replace_once(app, '    metricFirst: "First sequence",\n    metricLast: "Latest sequence",', '    metricFirst: "Boot sessions",\n    metricLast: "Current sequence",')
+          replace_once(app, '    tableRange: "Sequence range",\n    tableReadings: "Readings",', '    tableRange: "Sequence range",\n    tableSession: "Boot session",\n    tableReadings: "Readings",')
+
+          old_reset = '''function resetReasonText(value) {
+            const keys = {
+              power_on: "resetPowerOn",
+              external_reset: "resetExternal",
+              software_reset: "resetSoftware",
+              watchdog_reset: "resetWatchdog",
+              deep_sleep_wake: "resetDeepSleep",
+              exception_reset: "resetException",
+              unknown: "resetUnknown",
+            };
+            return t(keys[value] || "resetUnknown");
+          }
+          '''
+          new_reset = old_reset + '''
+          function sessionNode(batch, isSessionStart = false) {
+            const wrapper = document.createElement("span");
+            wrapper.className = "batch-session";
+            const boot = document.createElement("code");
+            boot.textContent = formatBootId(batch.boot_id);
+            wrapper.append(boot);
+            if (isSessionStart && batch.reset_reason) {
+              const reason = document.createElement("span");
+              reason.textContent = resetReasonText(batch.reset_reason);
+              wrapper.append(reason);
+            }
+            return wrapper;
+          }
+          '''
+          replace_once(app, old_reset, new_reset)
+
+          old_metrics = '''function updateDeviceMetrics() {
+            const readings = state.batches.reduce((total, batch) => total + Number(batch.reading_count || 0), 0);
+            const first = state.batches.map((batch) => Number(batch.first_sequence)).filter(Number.isFinite);
+            const last = state.batches.map((batch) => Number(batch.last_sequence)).filter(Number.isFinite);
+            document.querySelector("#metric-batches").textContent = state.batches.length;
+            document.querySelector("#metric-readings").textContent = readings;
+            document.querySelector("#metric-first").textContent = first.length ? Math.min(...first) : "—";
+            document.querySelector("#metric-last").textContent = last.length ? Math.max(...last) : "—";
+          }
+          '''
+          new_metrics = '''function updateDeviceMetrics() {
+            const readings = state.batches.reduce((total, batch) => total + Number(batch.reading_count || 0), 0);
+            const sessions = new Set(
+              state.batches
+                .map((batch) => batch.boot_id)
+                .filter((value) => value != null)
+                .map(String),
+            );
+            const latestBatch = state.batches[0];
+            document.querySelector("#metric-batches").textContent = state.batches.length;
+            document.querySelector("#metric-readings").textContent = readings;
+            document.querySelector("#metric-first").textContent = sessions.size || "—";
+            document.querySelector("#metric-last").textContent = latestBatch?.last_sequence ?? "—";
+          }
+          '''
+          replace_once(app, old_metrics, new_metrics)
+
+          replace_once(
+              app,
+              '    const olderBatch = state.batches[batchIndex + 1];\n    if (batch.boot_id != null && (!olderBatch || olderBatch.boot_id !== batch.boot_id)) {',
+              '    const olderBatch = state.batches[batchIndex + 1];\n    const isSessionStart = batch.boot_id != null && Boolean(olderBatch) && olderBatch.boot_id !== batch.boot_id;\n    if (isSessionStart) {',
+          )
+          replace_once(
+              app,
+              '      tableCell(t("tableRange"), `${batch.first_sequence}–${batch.last_sequence}`, "mono"),\n      tableCell(t("tableReadings"), String(batch.reading_count), "mono"),',
+              '      tableCell(t("tableRange"), `${batch.first_sequence}–${batch.last_sequence}`, "mono"),\n      tableCell(t("tableSession"), sessionNode(batch, isSessionStart), "session-cell"),\n      tableCell(t("tableReadings"), String(batch.reading_count), "mono"),',
+          )
+
+          index = "portal/index.html"
+          replace_once(
+              index,
+              '                <th data-i18n="tableRange">Диапазон</th>\n                <th data-i18n="tableReadings">Показаний</th>',
+              '                <th data-i18n="tableRange">Диапазон</th>\n                <th data-i18n="tableSession">Сеанс загрузки</th>\n                <th data-i18n="tableReadings">Показаний</th>',
+          )
+
+          css = "portal/styles.css"
+          replace_once(
+              css,
+              '.batch-statuses { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; }',
+              '.batch-statuses { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; }\n.batch-session { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; white-space: nowrap; }\n.batch-session code { color: var(--paper); font: 600 11px var(--mono); }\n.batch-session span { color: var(--warning); font: 600 9px var(--mono); letter-spacing: .04em; text-transform: uppercase; }',
+          )
+
+          tests = ".github/workflows/tests.yml"
+          replace_once(
+              tests,
+              '      - name: Test the independent browser verifier\n        run: node --test tests/test_browser_verifier.mjs',
+              '      - name: Check portal JavaScript syntax\n        run: node --check portal/app.js\n\n      - name: Test the independent browser verifier\n        run: node --test tests/test_browser_verifier.mjs',
+          )
+          PY
+
+      - name: Validate patched JavaScript
+        run: node --check portal/app.js
+
+      - name: Commit patch and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-boot-session-ui.yml
+          git add portal/app.js portal/index.html portal/styles.css .github/workflows/tests.yml
+          git commit -m "feat: show boot sessions in device history"
+          git push origin HEAD:main
