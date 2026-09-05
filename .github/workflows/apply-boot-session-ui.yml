@@ -118,24 +118,16 @@ jobs:
               '.batch-statuses { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; }',
               '.batch-statuses { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; }\n.batch-session { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; white-space: nowrap; }\n.batch-session code { color: var(--paper); font: 600 11px var(--mono); }\n.batch-session span { color: var(--warning); font: 600 9px var(--mono); letter-spacing: .04em; text-transform: uppercase; }',
           )
-
-          tests = ".github/workflows/tests.yml"
-          replace_once(
-              tests,
-              '      - name: Test the independent browser verifier\n        run: node --test tests/test_browser_verifier.mjs',
-              '      - name: Check portal JavaScript syntax\n        run: node --check portal/app.js\n\n      - name: Test the independent browser verifier\n        run: node --test tests/test_browser_verifier.mjs',
-          )
           PY
 
       - name: Validate patched JavaScript
         run: node --check portal/app.js
 
-      - name: Commit patch and remove one-time workflow
+      - name: Commit portal patch
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/apply-boot-session-ui.yml
-          git add portal/app.js portal/index.html portal/styles.css .github/workflows/tests.yml
+          git add portal/app.js portal/index.html portal/styles.css
           git commit -m "feat: show boot sessions in device history"
           git push origin HEAD:main
