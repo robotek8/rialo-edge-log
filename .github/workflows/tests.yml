@@ -43,5 +43,8 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Check portal JavaScript syntax
+        run: node --check portal/app.js
+
       - name: Test the independent browser verifier
         run: node --test tests/test_browser_verifier.mjs
