@@ -19,9 +19,15 @@ New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 
 switch ($Role) {
     "gateway" {
+        $staleSeconds = if ($null -ne $config.gatewayStaleSeconds) {
+            [double]$config.gatewayStaleSeconds
+        } else {
+            120.0
+        }
         $pythonArguments = @(
             "-m", "gateway.edge_gateway", "listen",
-            "--port", [string]$config.comPort
+            "--port", [string]$config.comPort,
+            "--stale-seconds", [string]$staleSeconds
         )
     }
     "anchor" {
@@ -80,6 +86,10 @@ while ($true) {
             -PassThru
         Set-Content -Path $pidPath -Value $process.Id -Encoding ASCII
         $process.WaitForExit()
+        if ($process.ExitCode -ne 0) {
+            "[$(Get-Date -Format o)] $Role exited with code $($process.ExitCode); restarting in 10 seconds." |
+                Add-Content -Path $stderrPath
+        }
     }
     catch {
         $_ | Out-String | Add-Content -Path $stderrPath
