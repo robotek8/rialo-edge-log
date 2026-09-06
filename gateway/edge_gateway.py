@@ -28,6 +28,7 @@ REGISTRY_SCHEMA_VERSION = 1
 SIGNATURE_ALGORITHM = "ecdsa-p256-sha256-raw"
 DEFAULT_BAUD_RATE = 115200
 DEFAULT_BATCH_SIZE = 60
+DEFAULT_STALE_SECONDS = 120.0
 DEVICE_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 HEX_PATTERN = re.compile(r"^[0-9a-fA-F]+$")
 
@@ -588,9 +589,12 @@ def listen_to_serial(
     data_directory: Path,
     registry_path: Path,
     heartbeat_seconds: float = 60.0,
+    stale_seconds: float = DEFAULT_STALE_SECONDS,
 ) -> int:
     if batch_size < 1:
         raise ValueError("batch size must be at least one")
+    if stale_seconds < 0:
+        raise ValueError("stale timeout cannot be negative")
 
     serial, _ = import_serial_modules()
     registry = load_registry(registry_path)
@@ -599,13 +603,26 @@ def listen_to_serial(
     active_device: str | None = None
     active_boot_id: int | None = None
     next_heartbeat_at = 0.0
+    last_signed_at = time.monotonic()
 
     print(f"Listening on {port} at {baud_rate} baud. Press Ctrl+C to stop.")
     print(f"A signed proof batch will be written every {batch_size} readings.")
+    if stale_seconds > 0:
+        print(f"Gateway stale watchdog: {stale_seconds:g} seconds without signed telemetry.")
 
     try:
         with open_serial_connection(serial, port, baud_rate) as connection:
             while True:
+                if stale_seconds > 0:
+                    silent_for = time.monotonic() - last_signed_at
+                    if silent_for >= stale_seconds:
+                        print(
+                            f"[STALE] no valid signed telemetry for {silent_for:.1f}s; "
+                            "exiting so the supervisor can restart the gateway",
+                            file=sys.stderr,
+                        )
+                        return 2
+
                 raw = connection.readline()
                 if not raw:
                     continue
@@ -643,7 +660,7 @@ def listen_to_serial(
                     print(f"[REJECTED] {exc}: {line}")
                     continue
 
-                if reading["schema_version"] != SCHEMA_VERSION_SIGNED:
+                if reading["schema_version"] not in SIGNED_SCHEMA_VERSIONS:
                     print("[REJECTED] unsigned telemetry; flash the signed firmware")
                     continue
 
@@ -655,6 +672,8 @@ def listen_to_serial(
                 if not verify_reading_signature(reading, public_key_hex):
                     print(f"[SECURITY] invalid signature from {reading['device_id']}")
                     continue
+
+                last_signed_at = time.monotonic()
 
                 if active_device is not None and reading["device_id"] != active_device:
                     print("[WARNING] Device changed; discarding the unfinished batch.")
@@ -728,6 +747,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=60.0,
         help="write the latest signed heartbeat at this interval; zero disables it",
     )
+    listen.add_argument(
+        "--stale-seconds",
+        type=float,
+        default=DEFAULT_STALE_SECONDS,
+        help="exit after this many seconds without valid signed telemetry; zero disables it",
+    )
 
     verify = subparsers.add_parser("verify", help="verify one saved batch")
     verify.add_argument("path", type=Path)
@@ -751,6 +776,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.data_dir,
                 registry_path,
                 args.heartbeat_seconds,
+                args.stale_seconds,
             )
         if args.command == "verify":
             valid, message = verify_batch_file(args.path, args.registry)
