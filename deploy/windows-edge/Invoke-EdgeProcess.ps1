@@ -42,6 +42,11 @@ function Get-RialoRpcRoutes {
     }
 }
 
+function Format-InvariantNumber {
+    param([double]$Value)
+    return $Value.ToString("G", [Globalization.CultureInfo]::InvariantCulture)
+}
+
 switch ($Role) {
     "gateway" {
         $staleSeconds = if ($null -ne $config.gatewayStaleSeconds) {
@@ -52,7 +57,7 @@ switch ($Role) {
         $pythonArguments = @(
             "-m", "gateway.edge_gateway", "listen",
             "--port", [string]$config.comPort,
-            "--stale-seconds", [string]$staleSeconds
+            "--stale-seconds", (Format-InvariantNumber $staleSeconds)
         )
     }
     "anchor" {
@@ -103,11 +108,11 @@ switch ($Role) {
             "--fee-payer", $feePayer,
             "--rpc-url", [string]$routes.RpcUrl,
             "--wsl-project-dir", [string]$config.wslProjectDirectory,
-            "--low-balance-rlo", [string]$lowBalance,
-            "--airdrop-amount-rlo", [string]$airdropAmount,
-            "--recovery-balance-rlo", [string]$recoveryBalance,
-            "--check-seconds", [string]$checkSeconds,
-            "--airdrop-cooldown-seconds", [string]$cooldownSeconds
+            "--low-balance-rlo", (Format-InvariantNumber $lowBalance),
+            "--airdrop-amount-rlo", (Format-InvariantNumber $airdropAmount),
+            "--recovery-balance-rlo", (Format-InvariantNumber $recoveryBalance),
+            "--check-seconds", (Format-InvariantNumber $checkSeconds),
+            "--airdrop-cooldown-seconds", (Format-InvariantNumber $cooldownSeconds)
         )
     }
     "publisher" {
