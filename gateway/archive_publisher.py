@@ -20,10 +20,19 @@ from gateway.portal import PortalError, PortalStore
 
 ARCHIVE_URL_ENV = "RIALO_EDGE_LOG_ARCHIVE_URL"
 INGEST_TOKEN_ENV = "RIALO_EDGE_LOG_INGEST_TOKEN"
+DEFAULT_OFFLINE_RETRY_SECONDS = 60.0
 
 
 class ArchivePublishError(RuntimeError):
     """Raised when a verified batch cannot be published safely."""
+
+
+def is_transient_archive_error(exc: BaseException) -> bool:
+    """Return True for connectivity-style failures that should use offline backoff."""
+    message = str(exc).lower()
+    return message.startswith("archive request failed:") or message.startswith(
+        "heartbeat request failed:"
+    )
 
 
 def publication_path(batch_id: str, directory: Path) -> Path:
@@ -255,12 +264,14 @@ def watch_batches(args: argparse.Namespace) -> int:
     known = set() if args.include_existing else existing
     published_heartbeats: dict[Path, str] = {}
     heartbeat_directory = args.heartbeat_dir or args.data_dir / "heartbeats"
+    offline = False
     if known:
         print(f"Watching for new verified batches; {len(known)} existing batch(es) left private.")
     else:
         print("Watching for Rialo-verified batches. Press Ctrl+C to stop.")
     try:
         while True:
+            transient_failure: ArchivePublishError | None = None
             candidates = list_publishable_batch_ids(
                 args.data_dir, publication_directory
             )
@@ -276,12 +287,25 @@ def watch_batches(args: argparse.Namespace) -> int:
                         args.ingest_token,
                     )
                 except ArchivePublishError as exc:
+                    if is_transient_archive_error(exc):
+                        transient_failure = exc
+                        if not offline:
+                            print(
+                                f"[OFFLINE] archive unreachable; local queue retained: {exc}",
+                                file=sys.stderr,
+                            )
+                        offline = True
+                        break
                     print(f"[FAILED] {batch_id}: {exc}", file=sys.stderr)
                     continue
+                if offline:
+                    print("[ONLINE] archive reachable; resuming queued publications")
+                    offline = False
                 known.add(batch_id)
                 print(f"[{result['status']}] {batch_id}")
                 print(f"[RECEIPT] {receipt}")
-            if heartbeat_directory.exists():
+
+            if transient_failure is None and heartbeat_directory.exists():
                 for path in sorted(heartbeat_directory.glob("*.json")):
                     try:
                         heartbeat = load_heartbeat(path)
@@ -292,8 +316,20 @@ def watch_batches(args: argparse.Namespace) -> int:
                             args.archive_url, args.ingest_token, heartbeat
                         )
                     except ArchivePublishError as exc:
+                        if is_transient_archive_error(exc):
+                            transient_failure = exc
+                            if not offline:
+                                print(
+                                    f"[OFFLINE] archive unreachable; local queue retained: {exc}",
+                                    file=sys.stderr,
+                                )
+                            offline = True
+                            break
                         print(f"[HEARTBEAT FAILED] {path}: {exc}", file=sys.stderr)
                         continue
+                    if offline:
+                        print("[ONLINE] archive reachable; resuming queued publications")
+                        offline = False
                     published_heartbeats[path] = identity
                     print(
                         f"[HEARTBEAT] {result.get('device_id')} "
@@ -301,7 +337,10 @@ def watch_batches(args: argparse.Namespace) -> int:
                     )
             if args.once:
                 return 0
-            time.sleep(args.poll_seconds)
+            if transient_failure is not None:
+                time.sleep(args.offline_retry_seconds)
+            else:
+                time.sleep(args.poll_seconds)
     except KeyboardInterrupt:
         print("\nStopped.")
         return 0
@@ -338,6 +377,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     watch = subparsers.add_parser("watch", help="publish new verified batches")
     watch.add_argument("--poll-seconds", type=float, default=2.0)
+    watch.add_argument(
+        "--offline-retry-seconds",
+        type=float,
+        default=DEFAULT_OFFLINE_RETRY_SECONDS,
+        help="wait between archive retries while connectivity is unavailable",
+    )
     watch.add_argument("--include-existing", action="store_true")
     watch.add_argument("--once", action="store_true")
     add_common_arguments(watch)
