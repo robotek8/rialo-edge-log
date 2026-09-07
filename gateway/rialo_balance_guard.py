@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -68,21 +69,25 @@ def transaction_error(transaction_result: dict[str, Any]) -> Any:
     return meta.get("err") if isinstance(meta, dict) else None
 
 
+def wsl_directory_expression(path: str) -> str:
+    if path == "~":
+        return '"$HOME"'
+    if path.startswith("~/"):
+        suffix = path[2:]
+        if not suffix:
+            return '"$HOME"'
+        return f'"$HOME"/{shlex.quote(suffix)}'
+    return shlex.quote(path)
+
+
 def build_airdrop_invocation(amount_rlo: float, wsl_project_dir: str) -> list[str]:
     if amount_rlo <= 0:
         raise ValueError("airdrop amount must be positive")
     amount = format(amount_rlo, "g")
-    if wsl_project_dir == "~":
-        directory = '"$HOME"'
-    elif wsl_project_dir.startswith("~/"):
-        suffix = wsl_project_dir[2:].replace("'", "'\\''")
-        directory = f'"$HOME"/\'{suffix}\''
-    else:
-        escaped = wsl_project_dir.replace("'", "'\\''")
-        directory = f"'{escaped}'"
     script = (
         'export PATH="$HOME/.local/share/rialo/bin:$PATH"; '
-        f"cd -- {directory} && rialo client airdrop --amount {amount}"
+        f"cd -- {wsl_directory_expression(wsl_project_dir)} "
+        f"&& rialo client airdrop --amount {amount}"
     )
     return ["wsl.exe", "--", "bash", "-lc", script]
 
