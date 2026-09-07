@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("gateway", "anchor", "publisher")]
+    [ValidateSet("gateway", "anchor", "publisher", "balanceguard")]
     [string]$Role
 )
 
@@ -17,6 +17,31 @@ $python = (Get-Command "py.exe" -ErrorAction Stop).Source
 $env:PYTHONUNBUFFERED = "1"
 New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
 
+function Get-RialoRpcRoutes {
+    $rpcUrl = if ($config.rpcUrl) {
+        [string]$config.rpcUrl
+    } else {
+        "http://devnet.rialo.io:4100"
+    }
+    $cliRpcUrl = $rpcUrl
+    if ($config.rpcTunnelEnabled) {
+        $routeOutput = & wsl.exe -- ip route show default
+        $routeMatch = [regex]::Match(
+            ($routeOutput -join "`n"),
+            "(?m)^default\s+via\s+([0-9.]+)\b"
+        )
+        if (-not $routeMatch.Success) {
+            throw "Could not determine the Windows host address from WSL"
+        }
+        $wslGateway = $routeMatch.Groups[1].Value
+        $cliRpcUrl = "http://${wslGateway}:$($config.rpcTunnelLocalPort)"
+    }
+    return [PSCustomObject]@{
+        RpcUrl = $rpcUrl
+        CliRpcUrl = $cliRpcUrl
+    }
+}
+
 switch ($Role) {
     "gateway" {
         $staleSeconds = if ($null -ne $config.gatewayStaleSeconds) {
@@ -31,31 +56,58 @@ switch ($Role) {
         )
     }
     "anchor" {
-        $rpcUrl = if ($config.rpcUrl) {
-            [string]$config.rpcUrl
-        } else {
-            "http://devnet.rialo.io:4100"
-        }
-        $cliRpcUrl = $rpcUrl
-        if ($config.rpcTunnelEnabled) {
-            $routeOutput = & wsl.exe -- ip route show default
-            $routeMatch = [regex]::Match(
-                ($routeOutput -join "`n"),
-                "(?m)^default\s+via\s+([0-9.]+)\b"
-            )
-            if (-not $routeMatch.Success) {
-                throw "Could not determine the Windows host address from WSL"
-            }
-            $wslGateway = $routeMatch.Groups[1].Value
-            $cliRpcUrl = "http://${wslGateway}:$($config.rpcTunnelLocalPort)"
-        }
+        $routes = Get-RialoRpcRoutes
         $pythonArguments = @(
             "-m", "gateway.rialo_anchor", "watch",
             "--include-existing",
             "--program-id", [string]$config.programId,
             "--wsl-project-dir", [string]$config.wslProjectDirectory,
-            "--rpc-url", $rpcUrl,
-            "--cli-rpc-url", $cliRpcUrl
+            "--rpc-url", [string]$routes.RpcUrl,
+            "--cli-rpc-url", [string]$routes.CliRpcUrl
+        )
+    }
+    "balanceguard" {
+        $routes = Get-RialoRpcRoutes
+        $feePayer = if ($config.rialoFeePayer) {
+            [string]$config.rialoFeePayer
+        } else {
+            "BBjJpGwN3aV3BrMPw6BCZHZue8btcqTTfXouG9Nv9Sz6"
+        }
+        $lowBalance = if ($null -ne $config.rialoLowBalanceRlo) {
+            [double]$config.rialoLowBalanceRlo
+        } else {
+            0.25
+        }
+        $airdropAmount = if ($null -ne $config.rialoAirdropAmountRlo) {
+            [double]$config.rialoAirdropAmountRlo
+        } else {
+            1.0
+        }
+        $recoveryBalance = if ($null -ne $config.rialoRecoveryBalanceRlo) {
+            [double]$config.rialoRecoveryBalanceRlo
+        } else {
+            0.25
+        }
+        $checkSeconds = if ($null -ne $config.rialoBalanceCheckSeconds) {
+            [double]$config.rialoBalanceCheckSeconds
+        } else {
+            300.0
+        }
+        $cooldownSeconds = if ($null -ne $config.rialoAirdropCooldownSeconds) {
+            [double]$config.rialoAirdropCooldownSeconds
+        } else {
+            900.0
+        }
+        $pythonArguments = @(
+            "-m", "gateway.rialo_balance_guard",
+            "--fee-payer", $feePayer,
+            "--rpc-url", [string]$routes.RpcUrl,
+            "--wsl-project-dir", [string]$config.wslProjectDirectory,
+            "--low-balance-rlo", [string]$lowBalance,
+            "--airdrop-amount-rlo", [string]$airdropAmount,
+            "--recovery-balance-rlo", [string]$recoveryBalance,
+            "--check-seconds", [string]$checkSeconds,
+            "--airdrop-cooldown-seconds", [string]$cooldownSeconds
         )
     }
     "publisher" {
