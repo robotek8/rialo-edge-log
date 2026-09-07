@@ -8,6 +8,9 @@ param(
 $ErrorActionPreference = "Stop"
 $stateRoot = Join-Path $env:LOCALAPPDATA "RialoEdgeLog"
 $roles = @("Gateway", "Anchor", "Publisher")
+if ($null -ne (Get-ScheduledTask -TaskName "RialoEdgeLog-BalanceGuard" -ErrorAction SilentlyContinue)) {
+    $roles = @("BalanceGuard") + $roles
+}
 if ($null -ne (Get-ScheduledTask -TaskName "RialoEdgeLog-Tunnel" -ErrorAction SilentlyContinue)) {
     $roles = @("Tunnel") + $roles
 }
